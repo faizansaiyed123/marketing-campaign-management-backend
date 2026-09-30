@@ -46,6 +46,10 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         campaign_id=campaign.id,
         total_recipients=len(contacts),
     )
+    if not contacts:
+        run.status = "completed"
+        run.finished_at = datetime.now(timezone.utc)
+        campaign.status = "completed"
     db.add(run)
 
     try:
@@ -180,11 +184,16 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                 message["Subject"] = run.campaign.subject
                 message["From"] = settings.smtp_from_email
                 message["To"] = delivery.contact.email
-                message["List-Unsubscribe"] = (
-                    f"<{settings.public_base_url.rstrip('/')}/track/"
-                    f"{delivery.tracking_token}/unsubscribe>"
+                unsubscribe_url = (
+                    f"{settings.public_base_url.rstrip('/')}/track/"
+                    f"{delivery.tracking_token}/unsubscribe"
                 )
-                message.set_content(_plain_text(run.campaign.body_html) or "Campaign message")
+                message["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+                message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+                plain_text = _plain_text(run.campaign.body_html) or "Campaign message"
+                message.set_content(
+                    plain_text + f"\n\nUnsubscribe: {unsubscribe_url}"
+                )
                 message.add_alternative(
                     build_tracked_html(run.campaign, delivery),
                     subtype="html",
