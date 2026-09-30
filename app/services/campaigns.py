@@ -19,6 +19,7 @@ LINK_RE = re.compile(
 )
 
 def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
+    retry_failed = campaign.status in {"failed", "partial"}
     claimed = db.execute(
         update(Campaign)
         .where(
@@ -38,7 +39,7 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         .order_by(CampaignRun.started_at.desc())
     ).first()
 
-    if latest_run and campaign.status in {"failed", "partial"}:
+    if latest_run and retry_failed:
         contacts = db.scalars(
             select(Contact)
             .join(Delivery, Delivery.contact_id == Contact.id)
