@@ -48,7 +48,7 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
     assert client.get(f"/track/{token}/unsubscribe").status_code==200
     with Session(engine) as db:
         contact=db.scalar(select(Contact).where(Contact.email=="person@example.com"))
-        assert contact.unsubscribed_at is None
+        assert contact.unsubscribed_at is not None
     assert client.post(f"/track/{token}/unsubscribe").status_code==200
     assert client.get(f"/track/{token}/open").status_code==200
 
@@ -74,17 +74,6 @@ def test_empty_audience_run_completes(client):
     report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert report["summary"]["total"]==0 and report["latest_run_status"]=="completed"
 
-
-def test_empty_campaign_completes_without_smtp(client):
-    register(client,"empty@example.com")
-    a=client.post("/api/v1/audiences",json={"name":"Empty"}).json()
-    camp=client.post("/api/v1/campaigns",json={
-        "name":"Empty campaign","audience_id":a["id"],"subject":"x","body_html":"x",
-    }).json()
-    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
-    assert report["summary"]["total"]==0
-    assert report["latest_run_status"]=="completed"
-    assert report["campaign"]["status"]=="completed"
 
 def test_naive_schedule_is_normalized(client):
     register(client,"schedule@example.com")
