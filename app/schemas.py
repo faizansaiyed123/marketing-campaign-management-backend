@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, field_validator
 
 def clean_required(value: str) -> str:
     cleaned = value.strip()
@@ -13,6 +13,15 @@ def normalize_datetime(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+def serialize_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat()
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -40,6 +49,7 @@ class AudienceResponse(BaseModel):
     name: str
     created_at: datetime
     contact_count: int = 0
+    _serialize_created_at = field_serializer("created_at")(serialize_datetime)
 
 class ContactCreate(BaseModel):
     email: EmailStr
@@ -54,6 +64,7 @@ class ContactResponse(BaseModel):
     last_name: str | None
     unsubscribed_at: datetime | None
     created_at: datetime
+    _serialize_datetimes = field_serializer("unsubscribed_at", "created_at")(serialize_datetime)
 
 class CampaignCreate(BaseModel):
     name: str = Field(min_length=1, max_length=140)
@@ -87,6 +98,7 @@ class CampaignResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     audience_name: str | None = None
+    _serialize_datetimes = field_serializer("scheduled_at", "created_at", "updated_at")(serialize_datetime)
 
 class DeliverySummary(BaseModel):
     total: int
