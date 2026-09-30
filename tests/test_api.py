@@ -44,7 +44,7 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
     assert "/track/"+token+"/open" in tracked_html
     assert client.get(f"/track/{token}/click",params={"url":"javascript:alert(1)"},follow_redirects=False).status_code==400
     assert client.post(f"/track/{token}/click").status_code==204
-    assert client.post(f"/track/{token}/unsubscribe",data="List-Unsubscribe=One-Click",headers={"Content-Type":"application/x-www-form-urlencoded"}).status_code==200
+    assert client.post(f"/track/{token}/unsubscribe",content="List-Unsubscribe=One-Click",headers={"Content-Type":"application/x-www-form-urlencoded"}).status_code==200
     assert client.get(f"/track/{token}/unsubscribe").status_code==200
     with Session(engine) as db:
         contact=db.scalar(select(Contact).where(Contact.email=="person@example.com"))
