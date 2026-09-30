@@ -62,6 +62,11 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         db.rollback()
         raise
 
+    if run.total_recipients == 0:
+        run.status = "completed"
+        run.finished_at = datetime.now(timezone.utc)
+        campaign.status = "completed"
+        db.commit()
     db.refresh(run)
     return run
 
