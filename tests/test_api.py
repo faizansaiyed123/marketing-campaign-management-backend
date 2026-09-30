@@ -357,3 +357,192 @@ def test_campaign_editing_respects_execution_state(client):
     }).json()
     assert client.post(f"/api/v1/campaigns/{camp['id']}/execute").status_code==202
     assert client.patch(f"/api/v1/campaigns/{camp['id']}",json={"subject":"changed"}).status_code==409
+
+
+def test_logout_sets_security_headers(client):
+    register(client, "logout-headers@example.com")
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["clear-site-data"] == '"cache", "cookies", "storage"'
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_cors_preflight_allows_configured_frontend_origin(client):
+    response = client.options(
+        "/api/v1/auth/me",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_duplicate_contact_and_delete_before_history(client):
+    register(client, "contacts-lifecycle@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Contacts"}).json()
+    contact = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "lifecycle@example.com"},
+    ).json()
+
+    duplicate = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "LIFECYCLE@example.com"},
+    )
+    assert duplicate.status_code == 409
+
+    deleted = client.delete(
+        f"/api/v1/audiences/{audience['id']}/contacts/{contact['id']}"
+    )
+    assert deleted.status_code == 204
+    assert client.get(f"/api/v1/audiences/{audience['id']}/contacts").json() == []
+
+
+def test_campaign_update_and_schedule_lifecycle(client):
+    register(client, "campaign-lifecycle@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Lifecycle"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "lifecycle-target@example.com"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Lifecycle",
+            "audience_id": audience["id"],
+            "subject": "Original",
+            "body_html": "<p>Original</p>",
+        },
+    ).json()
+    assert campaign["status"] == "draft"
+
+    updated = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"subject": "Updated"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["subject"] == "Updated"
+
+    scheduled = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"scheduled_at": "2999-01-01T12:00:00Z"},
+    )
+    assert scheduled.status_code == 200
+    assert scheduled.json()["status"] == "scheduled"
+
+    returned_to_draft = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"scheduled_at": None},
+    )
+    assert returned_to_draft.status_code == 200
+    assert returned_to_draft.json()["status"] == "draft"
+
+    executed = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert executed.status_code == 202
+    assert executed.json()["latest_run_status"] == "queued"
+
+
+def test_unsubscribe_get_only_shows_confirmation(client):
+    register(client, "unsubscribe-confirm@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Confirm"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "confirm@example.com"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Confirm",
+            "audience_id": audience["id"],
+            "subject": "x",
+            "body_html": "<p>x</p>",
+        },
+    ).json()
+    client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Contact, Delivery
+
+    with Session(engine) as db:
+        delivery = db.scalar(select(Delivery))
+        contact = db.get(Contact, delivery.contact_id)
+        token = delivery.tracking_token
+        assert contact.unsubscribed_at is None
+
+    page = client.get(f"/track/{token}/unsubscribe")
+    assert page.status_code == 200
+    assert "Confirm unsubscribe" in page.text
+
+    with Session(engine) as db:
+        contact = db.get(Contact, delivery.contact_id)
+        assert contact.unsubscribed_at is None
+
+    action = client.post(f"/track/{token}/unsubscribe")
+    assert action.status_code == 200
+    with Session(engine) as db:
+        contact = db.get(Contact, delivery.contact_id)
+        assert contact.unsubscribed_at is not None
+
+
+def test_analytics_counts_unique_tracking_events(client):
+    register(client, "analytics-events@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Analytics"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "analytics@example.com"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Analytics",
+            "audience_id": audience["id"],
+            "subject": "x",
+            "body_html": "<a href='https://example.com/report'>x</a>",
+        },
+    ).json()
+    report = client.post(f"/api/v1/campaigns/{campaign['id']}/execute").json()
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Delivery
+
+    with Session(engine) as db:
+        delivery = db.scalar(select(Delivery))
+        token = delivery.tracking_token
+
+    client.get(f"/track/{token}/open")
+    client.get(f"/track/{token}/open")
+    client.get(
+        f"/track/{token}/click",
+        params={"url": "https://example.com/report"},
+        follow_redirects=False,
+    )
+    client.get(
+        f"/track/{token}/click",
+        params={"url": "https://example.com/report"},
+        follow_redirects=False,
+    )
+
+    data = client.get("/api/v1/analytics/overview").json()
+    assert report["summary"]["total"] == 1
+    assert data == {
+        "deliveries": 1,
+        "sent": 0,
+        "failed": 0,
+        "opened": 1,
+        "clicked": 1,
+    }
+
+
+def test_unknown_tracking_event_is_rejected(client):
+    register(client, "tracking-event@example.com")
+    assert client.get("/track/not-a-token/video").status_code == 404
+    assert client.post("/track/not-a-token/video").status_code == 404
