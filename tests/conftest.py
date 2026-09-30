@@ -16,6 +16,14 @@ Base.metadata.create_all(engine)
 def override_db():
     with Session(engine) as db: yield db
 app.dependency_overrides[get_db]=override_db
+@pytest.fixture(autouse=True)
+def reset_db():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    yield
+    Base.metadata.drop_all(engine)
+
 @pytest.fixture()
 def client():
-    with TestClient(app) as c: yield c
+    with TestClient(app) as c:
+        yield c
