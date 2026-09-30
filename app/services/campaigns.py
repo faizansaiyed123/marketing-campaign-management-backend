@@ -19,6 +19,8 @@ LINK_RE = re.compile(
 )
 
 def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
+    was_retry = campaign.status in {"failed", "partial"}
+
     claimed = db.execute(
         update(Campaign)
         .where(
@@ -40,7 +42,7 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         Contact.audience_id == campaign.audience_id,
         Contact.unsubscribed_at.is_(None),
     )
-    if campaign.status in {"failed", "partial"}:
+    if was_retry:
         contacts_query = contacts_query.where(~Contact.id.in_(sent_contact_ids))
     contacts = db.scalars(contacts_query.order_by(Contact.created_at)).all()
 
