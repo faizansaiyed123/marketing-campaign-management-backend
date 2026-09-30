@@ -19,8 +19,6 @@ LINK_RE = re.compile(
 )
 
 def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
-    was_retry = campaign.status in {"failed", "partial"}
-
     claimed = db.execute(
         update(Campaign)
         .where(
@@ -34,27 +32,18 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         db.rollback()
         raise ValueError("Campaign is already queued or sent")
 
-    sent_contact_ids = select(Delivery.contact_id).join(CampaignRun).where(
-        CampaignRun.campaign_id == campaign.id,
-        Delivery.status == "sent",
-    )
-    contacts_query = select(Contact).where(
-        Contact.audience_id == campaign.audience_id,
-        Contact.unsubscribed_at.is_(None),
-    )
-    if was_retry:
-        contacts_query = contacts_query.where(~Contact.id.in_(sent_contact_ids))
-    contacts = db.scalars(contacts_query.order_by(Contact.created_at)).all()
+    contacts = db.scalars(
+        select(Contact).where(
+            Contact.audience_id == campaign.audience_id,
+            Contact.unsubscribed_at.is_(None),
+        ).order_by(Contact.created_at)
+    ).all()
 
     run = CampaignRun(
         id=str(uuid4()),
         campaign_id=campaign.id,
         total_recipients=len(contacts),
     )
-    if not contacts:
-        run.status = "completed"
-        run.finished_at = datetime.now(timezone.utc)
-        campaign.status = "completed"
     db.add(run)
 
     try:
@@ -187,19 +176,14 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
 
                 message = EmailMessage(policy=policy.SMTP)
                 message["Subject"] = run.campaign.subject
-                message["Message-ID"] = f"<delivery-{delivery.id}@campaign.local>"
                 message["From"] = settings.smtp_from_email
                 message["To"] = delivery.contact.email
-                unsubscribe_url = (
-                    f"{settings.public_base_url.rstrip('/')}/track/"
-                    f"{delivery.tracking_token}/unsubscribe"
+                message["List-Unsubscribe"] = (
+                    f"<{settings.public_base_url.rstrip('/')}/track/"
+                    f"{delivery.tracking_token}/unsubscribe>"
                 )
-                message["List-Unsubscribe"] = f"<{unsubscribe_url}>"
                 message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-                plain_text = _plain_text(run.campaign.body_html) or "Campaign message"
-                message.set_content(
-                    plain_text + f"\n\nUnsubscribe: {unsubscribe_url}"
-                )
+                message.set_content(_plain_text(run.campaign.body_html) or "Campaign message")
                 message.add_alternative(
                     build_tracked_html(run.campaign, delivery),
                     subtype="html",
@@ -213,11 +197,8 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                     delivery.status = "failed"
                     delivery.error_message = str(exc)[:500]
 
+        with db.begin():
             _finalize_run(db, run.id)
-            db.commit()
-
-        _finalize_run(db, run.id)
-        db.commit()
 
     except Exception as exc:
         db.rollback()
