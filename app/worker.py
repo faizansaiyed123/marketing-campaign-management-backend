@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime, timezone
 
@@ -6,6 +7,8 @@ from sqlalchemy import select
 from .db import SessionLocal
 from .models import Campaign, CampaignRun
 from .services.campaigns import deliver_queued_run, queue_campaign
+
+logger = logging.getLogger(__name__)
 
 def process_due_campaigns() -> int:
     processed = 0
@@ -44,7 +47,7 @@ def main():
         try:
             process_due_campaigns()
         except Exception:
-            pass
+            logger.exception("Campaign scheduler iteration failed")
         time.sleep(15)
 
 if __name__ == "__main__":
