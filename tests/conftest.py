@@ -3,6 +3,7 @@ os.environ["DATABASE_URL"]="sqlite+pysqlite:///:memory:"
 os.environ["JWT_SECRET_KEY"]="test-secret"
 os.environ["FRONTEND_ORIGIN"]="http://testserver"
 os.environ["COOKIE_SECURE"]="false"
+os.environ["ENVIRONMENT"]="test"
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

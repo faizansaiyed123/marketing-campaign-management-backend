@@ -15,20 +15,25 @@ def queue_campaign(db:Session,campaign:Campaign)->CampaignRun:
         db.add(Delivery(id=str(uuid4()),run_id=run.id,contact_id=contact.id,tracking_token=uuid4().hex,status="queued"))
     campaign.status="queued"; db.commit(); db.refresh(run); return run
 
+def build_tracked_html(campaign:Campaign, delivery:Delivery)->str:
+    s=get_settings()
+    pixel=f'<img src="{s.public_base_url.rstrip("/")}/track/{delivery.tracking_token}/open" width="1" height="1" alt="" style="display:none" />'
+    return campaign.body_html + pixel
+
 def deliver_queued_run(db:Session,run:CampaignRun)->CampaignRun:
-    settings=get_settings()
-    if not settings.smtp_host or not settings.smtp_from_email:
-        return run
+    s=get_settings()
+    if not s.smtp_host or not s.smtp_from_email: return run
     campaign=run.campaign
-    server=smtplib.SMTP(settings.smtp_host,settings.smtp_port,timeout=20)
+    server=smtplib.SMTP(s.smtp_host,s.smtp_port,timeout=20)
     try:
-        if settings.smtp_use_tls: server.starttls()
-        if settings.smtp_username: server.login(settings.smtp_username,settings.smtp_password or "")
+        if s.smtp_use_tls: server.starttls()
+        if s.smtp_username: server.login(s.smtp_username,s.smtp_password or "")
         for delivery in run.deliveries:
             if delivery.status!="queued": continue
             message=EmailMessage()
-            message["Subject"]=campaign.subject; message["From"]=settings.smtp_from_email; message["To"]=delivery.contact.email
-            message.set_content(campaign.body_html,subtype="html")
+            message["Subject"]=campaign.subject; message["From"]=s.smtp_from_email; message["To"]=delivery.contact.email
+            message.set_content(campaign.body_html)
+            message.add_alternative(build_tracked_html(campaign,delivery),subtype="html")
             try:
                 server.send_message(message); delivery.status="sent"; delivery.sent_at=datetime.now(timezone.utc); run.sent_count+=1
             except Exception as exc:

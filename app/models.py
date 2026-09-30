@@ -84,7 +84,10 @@ class Delivery(Base):
 
 class CampaignEvent(Base):
     __tablename__="campaign_events"
-    __table_args__=(Index("ix_events_delivery_type","delivery_id","event_type"),)
+    __table_args__=(
+        UniqueConstraint("delivery_id","event_type",name="uq_campaign_event_delivery_type"),
+        Index("ix_events_delivery_type","delivery_id","event_type"),
+    )
     id: Mapped[str]=mapped_column(String(36),primary_key=True)
     delivery_id: Mapped[str]=mapped_column(ForeignKey("deliveries.id",ondelete="CASCADE"),index=True)
     event_type: Mapped[str]=mapped_column(String(24),index=True)

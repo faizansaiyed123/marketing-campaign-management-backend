@@ -2,21 +2,28 @@
 
 FastAPI + SQLAlchemy 2 + PostgreSQL + Alembic.
 
-The backend provides authenticated campaign management, audiences/contacts, scheduled campaign state, durable delivery records, optional SMTP delivery, tracking events, and analytics. Passwords are Argon2id-hashed; the session JWT is stored in an HttpOnly, SameSite=Strict cookie.
+Core workflows:
+- Secure account registration/login/logout using Argon2id passwords and an HttpOnly, SameSite=Strict JWT cookie.
+- Owner-scoped audience and contact management, including subscription preferences.
+- Campaign creation, editing, scheduling and execution.
+- Durable delivery records with optional standard SMTP delivery.
+- Open tracking through a real 1x1 GIF endpoint and aggregate reporting from persisted delivery/event records.
+- Lightweight 15-second scheduler worker; no Redis/Celery/Kafka is required.
+- PostgreSQL relational constraints, indexes and Alembic migrations.
 
-Scheduling is persisted with scheduled_at. The lightweight worker polls every 15 seconds, queues due campaigns, and attempts SMTP delivery when configured. No Redis, Celery, Kafka, or paid provider is required.
+Without SMTP, execution intentionally remains queued and never reports a message as sent.
 
-## Run
-```bash
+## Local
+```
 cp .env.example .env
 docker compose up
 ```
 
-For a Python-only API:
-```bash
+Python-only:
+```
 python -m pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-OpenAPI docs are served at /docs.
+In non-development environments set a strong JWT_SECRET_KEY and COOKIE_SECURE=true.
