@@ -96,6 +96,26 @@ def test_naive_schedule_is_normalized(client):
     assert camp["status"]=="scheduled"
     assert camp["scheduled_at"].endswith("+00:00")
 
+def test_invalid_password_hash_is_rejected(client):
+    register(client,"corrupt@example.com")
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import User
+    with Session(engine) as db:
+        user=db.query(User).filter(User.email=="corrupt@example.com").one()
+        user.password_hash="not-a-valid-argon2-hash"
+        db.commit()
+    assert client.post("/api/v1/auth/login",json={"email":"corrupt@example.com","password":"strong-password-123"}).status_code==401
+
+def test_production_security_defaults_are_rejected():
+    from pydantic import ValidationError
+    from app.core.config import Settings
+    try:
+        Settings(environment="production",jwt_secret_key="change-me-in-development",cookie_secure=False)
+        assert False, "unsafe production defaults were accepted"
+    except ValidationError:
+        pass
+
 def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
     assert client.post("/api/v1/audiences",json={"name":"   "}).status_code==422
