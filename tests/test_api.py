@@ -34,6 +34,15 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
 
     assert client.get(f"/track/{token}/open").status_code==200
     assert client.get(f"/track/{token}/click",params={"url":"https://example.com/path"}).status_code==307
+    from app.services.campaigns import build_tracked_html
+    with Session(engine) as db:
+        delivery=db.scalar(select(Delivery))
+        campaign_row=db.get(__import__("app.models",fromlist=["Campaign"]).Campaign,c["id"])
+        tracked_html=build_tracked_html(campaign_row,delivery)
+    assert "/track/"+token+"/click?url=https%3A%2F%2Fexample.com%2Fpath%3Fq%3D1" in tracked_html
+    assert "/track/"+token+"/unsubscribe" in tracked_html
+    assert "/track/"+token+"/open" in tracked_html
+    assert client.get(f"/track/{token}/click",params={"url":"javascript:alert(1)"}).status_code==400
     assert client.post(f"/track/{token}/click").status_code==204
     assert client.get(f"/track/{token}/unsubscribe").status_code==200
     assert client.get(f"/track/{token}/open").status_code==200
