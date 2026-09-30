@@ -149,7 +149,7 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
     register(client,"retry@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Retry"}).json()
     first=client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"first@example.com"}).json()
-    second=client.post(f"/api/v1/audiences/{a["id"]}/contacts",json={"email":"second@example.com"}).json()
+    second=client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"second@example.com"}).json()
     camp=client.post("/api/v1/campaigns",json={"name":"Retry","audience_id":a["id"],"subject":"Retry","body_html":"Hello"}).json()
 
     from types import SimpleNamespace
@@ -173,13 +173,13 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
         smtp_from_email="sender@example.com",smtp_use_tls=False,public_base_url="http://localhost:8000"
     ))
 
-    first_report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    first_report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert first_report["summary"]["sent"]==1
     assert first_report["summary"]["failed"]==1
     assert first_report["latest_run_status"]=="partial"
 
     state["attempt"]=1
-    second_report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    second_report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert second_report["summary"]["sent"]==1
     assert second_report["latest_run_status"]=="sent"
     assert sent.count("first@example.com")==1
