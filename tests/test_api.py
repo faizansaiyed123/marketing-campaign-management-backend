@@ -76,6 +76,43 @@ def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
     assert client.post("/api/v1/audiences",json={"name":"   "}).status_code==422
 
+def test_smtp_success_sends_and_tracks(client,monkeypatch):
+    register(client,"smtp-success@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"SMTP Success"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"smtp-target@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"SMTP Success",
+        "audience_id":a["id"],
+        "subject":"Tracked",
+        "body_html":'<a href="https://example.com/welcome">Welcome</a>',
+    }).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+
+    sent=[]
+    class FakeSMTP:
+        def __init__(self,*args,**kwargs): pass
+        def starttls(self): pass
+        def login(self,*args,**kwargs): pass
+        def send_message(self,message): sent.append(message)
+        def quit(self): pass
+
+    monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
+    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+        smtp_host="smtp.example",smtp_port=587,smtp_username="user",smtp_password="pass",
+        smtp_from_email="sender@example.com",smtp_use_tls=True,public_base_url="http://localhost:8000",
+    ))
+
+    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    assert report["latest_run_status"]=="sent"
+    assert report["summary"]["sent"]==1
+    assert report["campaign"]["status"]=="sent"
+    assert len(sent)==1
+    html=sent[0].get_body(preferencelist=("html",)).get_content()
+    assert "/click?url=https%3A%2F%2Fexample.com%2Fwelcome" in html
+    assert "/unsubscribe" in html
+
 def test_smtp_failure_marks_run_failed(client,monkeypatch):
     register(client,"smtp@example.com")
     a=client.post("/api/v1/audiences",json={"name":"SMTP"}).json()
