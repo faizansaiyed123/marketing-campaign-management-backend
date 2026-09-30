@@ -1,6 +1,6 @@
 import os
 os.environ["DATABASE_URL"]="sqlite+pysqlite:///:memory:"
-os.environ["JWT_SECRET_KEY"]="test-secret"
+os.environ["JWT_SECRET_KEY"]="test-secret-with-at-least-32-bytes-long"
 os.environ["FRONTEND_ORIGIN"]="http://testserver"
 os.environ["COOKIE_SECURE"]="false"
 os.environ["ENVIRONMENT"]="test"
