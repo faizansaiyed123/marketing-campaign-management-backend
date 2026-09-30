@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Campaign Management API"
-    environment: str = "development"
+    environment: str = "production"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/campaigns"
     jwt_secret_key: str = "change-me-in-development"
     jwt_expire_minutes: int = Field(default=480, gt=0, le=10080)
@@ -32,6 +32,8 @@ class Settings(BaseSettings):
                 raise ValueError("COOKIE_SECURE must be true outside development/test")
             if not self.public_base_url.startswith("https://"):
                 raise ValueError("PUBLIC_BASE_URL must use HTTPS outside development/test")
+            if not self.cookie_name.startswith("__Host-"):
+                raise ValueError("COOKIE_NAME must use the __Host- prefix outside development/test")
             if self.frontend_origin and not self.frontend_origin.startswith("https://"):
                 raise ValueError("FRONTEND_ORIGIN must use HTTPS outside development/test")
         return self
