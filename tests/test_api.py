@@ -70,7 +70,7 @@ def test_empty_audience_run_completes(client):
     register(client,"empty@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Empty"}).json()
     camp=client.post("/api/v1/campaigns",json={"name":"Empty","audience_id":a["id"],"subject":"x","body_html":"x"}).json()
-    report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert report["summary"]["total"]==0 and report["latest_run_status"]=="completed"
 
 
@@ -148,7 +148,7 @@ def test_smtp_failure_marks_run_failed(client,monkeypatch):
 def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monkeypatch):
     register(client,"retry@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Retry"}).json()
-    first=client.post(f"/api/v1/audiences/{a["id"]}/contacts",json={"email":"first@example.com"}).json()
+    first=client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"first@example.com"}).json()
     second=client.post(f"/api/v1/audiences/{a["id"]}/contacts",json={"email":"second@example.com"}).json()
     camp=client.post("/api/v1/campaigns",json={"name":"Retry","audience_id":a["id"],"subject":"Retry","body_html":"Hello"}).json()
 
