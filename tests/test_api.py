@@ -75,6 +75,17 @@ def test_empty_audience_run_completes(client):
     assert report["summary"]["total"]==0 and report["latest_run_status"]=="completed"
 
 
+def test_empty_campaign_completes_without_smtp(client):
+    register(client,"empty@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Empty"}).json()
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"Empty campaign","audience_id":a["id"],"subject":"x","body_html":"x",
+    }).json()
+    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    assert report["summary"]["total"]==0
+    assert report["latest_run_status"]=="completed"
+    assert report["campaign"]["status"]=="completed"
+
 def test_naive_schedule_is_normalized(client):
     register(client,"schedule@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Schedule"}).json()
