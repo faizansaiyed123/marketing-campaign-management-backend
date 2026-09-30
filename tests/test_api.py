@@ -180,7 +180,8 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
 
     state["attempt"]=1
     second_report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
-    assert second_report["summary"]["sent"]==1
+    assert second_report["summary"]["sent"]==2
+    assert second_report["summary"]["failed"]==1
     assert second_report["latest_run_status"]=="sent"
     assert sent.count("first@example.com")==1
     assert sent.count("second@example.com")==2
