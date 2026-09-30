@@ -372,7 +372,7 @@ def test_cors_preflight_allows_configured_frontend_origin(client):
     response = client.options(
         "/api/v1/auth/me",
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": "http://testserver",
             "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers": "content-type",
         },
