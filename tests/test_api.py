@@ -266,3 +266,94 @@ def test_dashboard_summary(client):
     client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"dash-contact@example.com"})
     data=client.get("/api/v1/dashboard/summary").json()
     assert data["audience_contacts"]==1 and data["audiences"]==1
+
+def test_execution_is_single_use_while_queued(client):
+    register(client,"queued@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Queued"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"queued-contact@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"Queued","audience_id":a["id"],"subject":"x","body_html":"x"
+    }).json()
+    first=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert first.status_code==202
+    second=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert second.status_code==409
+
+def test_scheduled_campaign_is_queued_by_worker(client):
+    register(client,"worker@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Worker"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"worker-contact@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"Worker","audience_id":a["id"],"subject":"x","body_html":"x",
+        "scheduled_at":"2999-01-01T12:00:00Z",
+    }).json()
+    assert camp["status"]=="scheduled"
+    from datetime import datetime, timezone
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Campaign
+    with Session(engine) as db:
+        row=db.get(Campaign,camp["id"])
+        row.scheduled_at=datetime.now(timezone.utc)
+        db.commit()
+    from app.worker import process_due_campaigns
+    assert process_due_campaigns()>=1
+    data=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
+    assert data["campaign"]["status"]=="queued"
+    assert data["latest_run_status"]=="queued"
+    assert data["summary"]["queued"]==1
+
+def test_tracking_is_idempotent_and_invalid_token_is_rejected(client):
+    register(client,"tracking@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Tracking"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"tracking-contact@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"Tracking","audience_id":a["id"],"subject":"x","body_html":"x"
+    }).json()
+    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    assert report["summary"]["queued"]==1
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Delivery,CampaignEvent
+    with Session(engine) as db:
+        delivery=db.scalar(select(Delivery))
+        token=delivery.tracking_token
+    assert client.get(f"/track/{token}/open").status_code==200
+    assert client.get(f"/track/{token}/open").status_code==200
+    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
+    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
+    with Session(engine) as db:
+        assert db.scalar(select(__import__("sqlalchemy").func.count(CampaignEvent.id)).where(
+            CampaignEvent.delivery_id==delivery.id
+        ))==2
+    assert client.get("/track/not-a-real-token/open").status_code==404
+
+def test_cross_user_campaign_creation_is_forbidden(client):
+    register(client,"owner@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Owner"}).json()
+    client.post("/api/v1/auth/logout")
+    register(client,"other@example.com")
+    assert client.post("/api/v1/campaigns",json={
+        "name":"Forbidden","audience_id":a["id"],"subject":"x","body_html":"x"
+    }).status_code==404
+
+def test_contact_with_campaign_history_cannot_be_deleted(client):
+    register(client,"history@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"History"}).json()
+    c=client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"history-contact@example.com"}).json()
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"History","audience_id":a["id"],"subject":"x","body_html":"x"
+    }).json()
+    assert client.post(f"/api/v1/campaigns/{camp['id']}/execute").status_code==202
+    assert client.delete(f"/api/v1/audiences/{a['id']}/contacts/{c['id']}").status_code==409
+
+def test_campaign_editing_respects_execution_state(client):
+    register(client,"edit@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Edit"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"edit-contact@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"Edit","audience_id":a["id"],"subject":"x","body_html":"x"
+    }).json()
+    assert client.post(f"/api/v1/campaigns/{camp['id']}/execute").status_code==202
+    assert client.patch(f"/api/v1/campaigns/{camp['id']}",json={"subject":"changed"}).status_code==409
