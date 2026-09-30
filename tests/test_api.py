@@ -145,6 +145,58 @@ def test_smtp_failure_marks_run_failed(client,monkeypatch):
     report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert report["summary"]["failed"]==1 and report["latest_run_status"]=="failed"
 
+def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monkeypatch):
+    register(client,"retry@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Retry"}).json()
+    first=client.post(f"/api/v1/audiences/{a["id"]}/contacts",json={"email":"first@example.com"}).json()
+    second=client.post(f"/api/v1/audiences/{a["id"]}/contacts",json={"email":"second@example.com"}).json()
+    camp=client.post("/api/v1/campaigns",json={"name":"Retry","audience_id":a["id"],"subject":"Retry","body_html":"Hello"}).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+    sent=[]
+    state={"attempt":0}
+
+    class FakeSMTP:
+        def __init__(self,*args,**kwargs): pass
+        def starttls(self): pass
+        def login(self,*args,**kwargs): pass
+        def send_message(self,message):
+            sent.append(message["To"])
+            if state["attempt"]==0 and message["To"]=="second@example.com":
+                raise OSError("temporary failure")
+        def quit(self): pass
+
+    monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
+    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+        smtp_host="smtp.example",smtp_port=587,smtp_username=None,smtp_password=None,
+        smtp_from_email="sender@example.com",smtp_use_tls=False,public_base_url="http://localhost:8000"
+    ))
+
+    first_report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    assert first_report["summary"]["sent"]==1
+    assert first_report["summary"]["failed"]==1
+    assert first_report["latest_run_status"]=="partial"
+
+    state["attempt"]=1
+    second_report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    assert second_report["summary"]["sent"]==1
+    assert second_report["latest_run_status"]=="sent"
+    assert sent.count("first@example.com")==1
+    assert sent.count("second@example.com")==2
+
+def test_malformed_password_hash_is_auth_failure(client):
+    register(client,"malformed@example.com")
+    from tests.conftest import engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy import select
+    from app.models import User
+    with Session(engine) as db:
+        user=db.scalar(select(User).where(User.email=="malformed@example.com"))
+        user.password_hash="not-a-valid-argon2-hash"
+        db.commit()
+    assert client.post("/api/v1/auth/login",json={"email":"malformed@example.com","password":"strong-password-123"}).status_code==401
+
 def test_cross_user_isolation(client):
     register(client,"one@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Private"}).json()
