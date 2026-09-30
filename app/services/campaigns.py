@@ -32,14 +32,17 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         db.rollback()
         raise ValueError("Campaign is already queued or sent")
 
-    contacts = db.scalars(
-        select(Contact)
-        .where(
-            Contact.audience_id == campaign.audience_id,
-            Contact.unsubscribed_at.is_(None),
-        )
-        .order_by(Contact.created_at)
-    ).all()
+    sent_contact_ids = select(Delivery.contact_id).join(CampaignRun).where(
+        CampaignRun.campaign_id == campaign.id,
+        Delivery.status == "sent",
+    )
+    contacts_query = select(Contact).where(
+        Contact.audience_id == campaign.audience_id,
+        Contact.unsubscribed_at.is_(None),
+    )
+    if campaign.status in {"failed", "partial"}:
+        contacts_query = contacts_query.where(~Contact.id.in_(sent_contact_ids))
+    contacts = db.scalars(contacts_query.order_by(Contact.created_at)).all()
 
     run = CampaignRun(
         id=str(uuid4()),
@@ -182,6 +185,7 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
 
                 message = EmailMessage(policy=policy.SMTP)
                 message["Subject"] = run.campaign.subject
+                message["Message-ID"] = f"<delivery-{delivery.id}@campaign.local>"
                 message["From"] = settings.smtp_from_email
                 message["To"] = delivery.contact.email
                 unsubscribe_url = (
