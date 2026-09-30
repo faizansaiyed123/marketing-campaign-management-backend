@@ -321,8 +321,8 @@ def test_tracking_is_idempotent_and_invalid_token_is_rejected(client):
         token=delivery.tracking_token
     assert client.get(f"/track/{token}/open").status_code==200
     assert client.get(f"/track/{token}/open").status_code==200
-    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"}).status_code==307
-    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"}).status_code==307
+    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
+    assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
     with Session(engine) as db:
         assert db.scalar(select(__import__("sqlalchemy").func.count(CampaignEvent.id)).where(
             CampaignEvent.delivery_id==delivery.id
@@ -351,6 +351,7 @@ def test_contact_with_campaign_history_cannot_be_deleted(client):
 def test_campaign_editing_respects_execution_state(client):
     register(client,"edit@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Edit"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"edit-contact@example.com"})
     camp=client.post("/api/v1/campaigns",json={
         "name":"Edit","audience_id":a["id"],"subject":"x","body_html":"x"
     }).json()
