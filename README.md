@@ -1,23 +1,22 @@
 # Marketing Campaign Management — Backend
 
-FastAPI, SQLAlchemy 2, PostgreSQL, Alembic.
+FastAPI + SQLAlchemy 2 + PostgreSQL + Alembic.
 
-### Implemented
-- Registration, login, logout and current-user session.
-- Argon2id password hashing and HttpOnly/SameSite=Strict JWT cookie authentication.
-- Owner-scoped audiences and contacts with relational constraints.
-- Campaign creation/editing, scheduled state, execution into a durable delivery outbox.
-- Optional SMTP delivery using Python's standard SMTP client; queued deliveries are never mislabeled as sent.
-- Campaign reports and aggregate analytics derived from stored delivery/tracking events.
-- PostgreSQL migration checked in under Alembic.
+The backend provides authenticated campaign management, audiences/contacts, scheduled campaign state, durable delivery records, optional SMTP delivery, tracking events, and analytics. Passwords are Argon2id-hashed; the session JWT is stored in an HttpOnly, SameSite=Strict cookie.
 
-### Run locally
-```
+Scheduling is persisted with scheduled_at. The lightweight worker polls every 15 seconds, queues due campaigns, and attempts SMTP delivery when configured. No Redis, Celery, Kafka, or paid provider is required.
+
+## Run
+```bash
 cp .env.example .env
-docker compose up -d postgres
+docker compose up
+```
+
+For a Python-only API:
+```bash
 python -m pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-OpenAPI docs: `http://127.0.0.1:8000/docs`.
+OpenAPI docs are served at /docs.
