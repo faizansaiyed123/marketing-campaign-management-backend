@@ -32,12 +32,32 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         db.rollback()
         raise ValueError("Campaign is already queued or sent")
 
-    contacts = db.scalars(
-        select(Contact).where(
-            Contact.audience_id == campaign.audience_id,
-            Contact.unsubscribed_at.is_(None),
-        ).order_by(Contact.created_at)
-    ).all()
+    latest_run = db.scalars(
+        select(CampaignRun)
+        .where(CampaignRun.campaign_id == campaign.id)
+        .order_by(CampaignRun.started_at.desc())
+    ).first()
+
+    if latest_run and campaign.status in {"failed", "partial"}:
+        contacts = db.scalars(
+            select(Contact)
+            .join(Delivery, Delivery.contact_id == Contact.id)
+            .where(
+                Delivery.run_id == latest_run.id,
+                Delivery.status == "failed",
+                Contact.unsubscribed_at.is_(None),
+            )
+            .order_by(Contact.created_at)
+        ).unique().all()
+    else:
+        contacts = db.scalars(
+            select(Contact)
+            .where(
+                Contact.audience_id == campaign.audience_id,
+                Contact.unsubscribed_at.is_(None),
+            )
+            .order_by(Contact.created_at)
+        ).all()
 
     run = CampaignRun(
         id=str(uuid4()),
@@ -57,16 +77,17 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
                     status="queued",
                 )
             )
+
+        if not contacts:
+            run.status = "completed"
+            run.finished_at = datetime.now(timezone.utc)
+            campaign.status = "completed"
+
         db.commit()
     except Exception:
         db.rollback()
         raise
 
-    if run.total_recipients == 0:
-        run.status = "completed"
-        run.finished_at = datetime.now(timezone.utc)
-        campaign.status = "completed"
-        db.commit()
     db.refresh(run)
     return run
 
