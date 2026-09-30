@@ -44,6 +44,7 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
     assert "/track/"+token+"/open" in tracked_html
     assert client.get(f"/track/{token}/click",params={"url":"javascript:alert(1)"},follow_redirects=False).status_code==400
     assert client.post(f"/track/{token}/click").status_code==204
+    assert client.post(f"/track/{token}/unsubscribe",data="List-Unsubscribe=One-Click",headers={"Content-Type":"application/x-www-form-urlencoded"}).status_code==200
     assert client.get(f"/track/{token}/unsubscribe").status_code==200
     with Session(engine) as db:
         contact=db.scalar(select(Contact).where(Contact.email=="person@example.com"))
@@ -124,6 +125,38 @@ def test_smtp_success_sends_and_tracks(client,monkeypatch):
     html=sent[0].get_body(preferencelist=("html",)).get_content()
     assert "/click?url=https%3A%2F%2Fexample.com%2Fwelcome" in html
     assert "/unsubscribe" in html
+
+def test_smtp_sends_multiple_recipients(client,monkeypatch):
+    register(client,"smtp-success@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"SMTP Success"}).json()
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"first@example.com"})
+    client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"second@example.com"})
+    camp=client.post("/api/v1/campaigns",json={
+        "name":"SMTP Success","audience_id":a["id"],"subject":"x",
+        "body_html":'<a href="https://example.com">x</a>',
+    }).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+    sent=[]
+    class FakeSMTP:
+        def __init__(self,*args,**kwargs): pass
+        def starttls(self): pass
+        def login(self,*args,**kwargs): pass
+        def send_message(self,message): sent.append(message)
+        def quit(self): pass
+    monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
+    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+        smtp_host="smtp.example",smtp_port=587,smtp_username=None,smtp_password=None,
+        smtp_from_email="sender@example.com",smtp_use_tls=True,public_base_url="http://localhost:8000",
+    ))
+
+    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    assert report["summary"]["sent"]==2
+    assert report["latest_run_status"]=="sent"
+    assert len(sent)==2
+    assert all("List-Unsubscribe" in msg and "List-Unsubscribe-Post" in msg for msg in sent)
+    assert all("/track/" in msg.as_string() for msg in sent)
 
 def test_smtp_failure_marks_run_failed(client,monkeypatch):
     register(client,"smtp@example.com")
