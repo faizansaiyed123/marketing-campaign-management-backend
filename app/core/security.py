@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError
+from argon2.exceptions import InvalidHashError, VerificationError
 from .config import get_settings
 
 _hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
@@ -13,7 +13,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, encoded: str) -> bool:
     try:
         return _hasher.verify(encoded, password)
-    except VerificationError:
+    except (InvalidHashError, VerificationError):
         return False
 
 def create_access_token(user_id: str) -> str:
