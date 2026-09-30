@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: campaigns
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: [campaign_postgres:/var/lib/postgresql/data]
+  api:
+    build: .
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/campaigns
+      JWT_SECRET_KEY: replace-this-in-real-deployments
+      FRONTEND_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: "false"
+      PUBLIC_BASE_URL: http://localhost:8000
+    ports: ["8000:8000"]
+    depends_on: [postgres]
+  worker:
+    build: .
+    command: ["python","-m","app.worker"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/campaigns
+      JWT_SECRET_KEY: replace-this-in-real-deployments
+      FRONTEND_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: "false"
+      PUBLIC_BASE_URL: http://localhost:8000
+    depends_on: [postgres]
+volumes:
+  campaign_postgres:
