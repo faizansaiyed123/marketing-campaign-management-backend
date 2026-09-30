@@ -3,12 +3,17 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, Uniqu
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
-def now_utc(): return datetime.now(timezone.utc)
+def now_utc():
+    return datetime.now(timezone.utc)
 
 class User(Base):
     __tablename__="users"
+    __table_args__=(
+        UniqueConstraint("email",name="users_email_key"),
+        Index("ix_users_email","email"),
+    )
     id: Mapped[str]=mapped_column(String(36),primary_key=True)
-    email: Mapped[str]=mapped_column(String(320),unique=True,index=True)
+    email: Mapped[str]=mapped_column(String(320),nullable=False)
     name: Mapped[str]=mapped_column(String(120))
     password_hash: Mapped[str]=mapped_column(String(512))
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now_utc)
@@ -70,10 +75,14 @@ class CampaignRun(Base):
 
 class Delivery(Base):
     __tablename__="deliveries"
+    __table_args__=(
+        UniqueConstraint("tracking_token",name="deliveries_tracking_token_key"),
+        Index("ix_deliveries_tracking_token","tracking_token"),
+    )
     id: Mapped[str]=mapped_column(String(36),primary_key=True)
     run_id: Mapped[str]=mapped_column(ForeignKey("campaign_runs.id",ondelete="CASCADE"),index=True)
     contact_id: Mapped[str]=mapped_column(ForeignKey("contacts.id",ondelete="RESTRICT"),index=True)
-    tracking_token: Mapped[str]=mapped_column(String(64),unique=True,index=True)
+    tracking_token: Mapped[str]=mapped_column(String(64),nullable=False)
     status: Mapped[str]=mapped_column(String(24),default="queued",index=True)
     provider_message_id: Mapped[str|None]=mapped_column(String(255),nullable=True)
     error_message: Mapped[str|None]=mapped_column(String(500),nullable=True)
