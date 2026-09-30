@@ -45,6 +45,10 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
     assert client.get(f"/track/{token}/click",params={"url":"javascript:alert(1)"},follow_redirects=False).status_code==400
     assert client.post(f"/track/{token}/click").status_code==204
     assert client.get(f"/track/{token}/unsubscribe").status_code==200
+    with Session(engine) as db:
+        contact=db.scalar(select(Contact).where(Contact.email=="person@example.com"))
+        assert contact.unsubscribed_at is None
+    assert client.post(f"/track/{token}/unsubscribe").status_code==200
     assert client.get(f"/track/{token}/open").status_code==200
 
     report=client.get(f"/api/v1/campaigns/{c['id']}/report").json()
@@ -61,6 +65,14 @@ def test_unsubscribe_is_excluded(client):
     client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"keep@example.com"})
     camp=client.post("/api/v1/campaigns",json={"name":"Prefs","audience_id":a["id"],"subject":"x","body_html":"x"}).json()
     assert client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()["summary"]["total"]==1
+
+def test_empty_audience_run_completes(client):
+    register(client,"empty@example.com")
+    a=client.post("/api/v1/audiences",json={"name":"Empty"}).json()
+    camp=client.post("/api/v1/campaigns",json={"name":"Empty","audience_id":a["id"],"subject":"x","body_html":"x"}).json()
+    report=client.post(f"/api/v1/campaigns/{camp["id"]}/execute").json()
+    assert report["summary"]["total"]==0 and report["latest_run_status"]=="completed"
+
 
 def test_naive_schedule_is_normalized(client):
     register(client,"schedule@example.com")
