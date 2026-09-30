@@ -199,8 +199,10 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                     delivery.error_message = str(exc)[:500]
 
             _finalize_run(db, run.id)
+            db.commit()
 
         _finalize_run(db, run.id)
+        db.commit()
 
     except Exception as exc:
         db.rollback()
