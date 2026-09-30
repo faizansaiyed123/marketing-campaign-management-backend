@@ -49,8 +49,9 @@ jobs:
           COOKIE_SECURE: "false"
           PUBLIC_BASE_URL: http://localhost:8000
         run: alembic check
-      - name: Run API tests
+      - name: Run API tests against PostgreSQL
         env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/campaigns
           ENVIRONMENT: test
           JWT_SECRET_KEY: ci-test-secret-with-at-least-32-bytes
           COOKIE_SECURE: "false"

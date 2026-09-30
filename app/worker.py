@@ -28,6 +28,11 @@ def process_due_campaigns() -> int:
             except ValueError:
                 db.rollback()
                 continue
+            except Exception:
+                db.rollback()
+                logger.exception("Failed to queue scheduled campaign %s", campaign.id)
+                continue
+
             deliver_queued_run(db, run)
             processed += 1
 
@@ -36,18 +41,27 @@ def process_due_campaigns() -> int:
             .where(CampaignRun.status == "queued")
             .order_by(CampaignRun.started_at)
         ).all()
+
         for run in queued_runs:
-            deliver_queued_run(db, run)
-            processed += 1
+            try:
+                deliver_queued_run(db, run)
+                processed += 1
+            except Exception:
+                db.rollback()
+                logger.exception("Failed to process queued campaign run %s", run.id)
 
     return processed
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     while True:
         try:
             process_due_campaigns()
         except Exception:
-            logger.exception("Campaign scheduler iteration failed")
+            logger.exception("Scheduler iteration failed")
         time.sleep(15)
 
 if __name__ == "__main__":
