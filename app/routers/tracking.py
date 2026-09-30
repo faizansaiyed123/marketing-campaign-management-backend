@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from html import escape
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -52,6 +51,11 @@ def record(tracking_token: str, event_type: str, db: Session) -> Delivery:
         db.rollback()
     return delivery
 
+def _unsubscribe_contact(delivery: Delivery, db: Session) -> None:
+    if delivery.contact.unsubscribed_at is None:
+        delivery.contact.unsubscribed_at = datetime.now(timezone.utc)
+        db.commit()
+
 @router.get("/{tracking_token}/open")
 def open_track(tracking_token: str, db: Session = Depends(get_db)):
     record(tracking_token, "open", db)
@@ -64,7 +68,7 @@ def open_track(tracking_token: str, db: Session = Depends(get_db)):
 @router.get("/{tracking_token}/click")
 def click_track(
     tracking_token: str,
-    url: str = Query(..., min_length=1, max_length=4096),
+    url: str = Query(..., min_length=1, max_length=8192),
     db: Session = Depends(get_db),
 ):
     parsed = urlparse(url)
@@ -74,21 +78,37 @@ def click_track(
     return RedirectResponse(url=url, status_code=307)
 
 @router.get("/{tracking_token}/unsubscribe", response_class=HTMLResponse)
-def unsubscribe(tracking_token: str, db: Session = Depends(get_db)):
+def unsubscribe_confirmation(tracking_token: str, db: Session = Depends(get_db)):
     delivery = _delivery(tracking_token, db)
-    contact = delivery.contact
-    if contact.unsubscribed_at is None:
-        contact.unsubscribed_at = datetime.now(timezone.utc)
-        db.commit()
-
+    action = f"/track/{tracking_token}/unsubscribe"
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='referrer' content='no-referrer'>"
+        "<title>Unsubscribe</title></head>"
+        "<body style='font-family:system-ui;padding:48px;max-width:620px;margin:auto'>"
+        "<h1>Unsubscribe</h1>"
+        "<p>Confirm that you no longer want to receive campaigns from this audience.</p>"
+        f"<form method='post' action='{action}'>"
+        "<button type='submit' style='padding:10px 16px'>Confirm unsubscribe</button>"
+        "</form></body></html>",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+@router.post("/{tracking_token}/unsubscribe", response_class=HTMLResponse)
+def unsubscribe_action(tracking_token: str, db: Session = Depends(get_db)):
+    delivery = _delivery(tracking_token, db)
+    _unsubscribe_contact(delivery, db)
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='referrer' content='no-referrer'>"
         "<title>Unsubscribed</title></head>"
         "<body style='font-family:system-ui;padding:48px;max-width:620px;margin:auto'>"
         "<h1>You have been unsubscribed</h1>"
         "<p>You will no longer receive campaigns from this audience.</p>"
-        "<p>You can close this window.</p></body></html>"
+        "<p>You can close this window.</p></body></html>",
+        headers={"Cache-Control": "no-store, max-age=0"},
     )
 
 @router.get("/{tracking_token}/{event_type}", status_code=204)
