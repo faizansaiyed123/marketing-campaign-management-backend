@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from .core.config import get_settings
+from .config import get_settings
 
 _hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 ALGORITHM = "HS256"
