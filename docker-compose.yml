@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: campaigns
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-campaigns}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports: ["5432:5432"]
     volumes: [campaign_postgres:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d campaigns"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-campaigns}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -17,12 +17,18 @@ services:
   api:
     build: .
     environment:
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/campaigns
-      JWT_SECRET_KEY: replace-this-in-real-deployments
-      FRONTEND_ORIGIN: http://localhost:5173
-      COOKIE_SECURE: "false"
-      PUBLIC_BASE_URL: http://localhost:8000
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-campaigns}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-replace-this-in-real-deployments}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
     ports: ["8000:8000"]
     depends_on:
       postgres:
@@ -39,12 +45,18 @@ services:
     build: .
     command: ["python", "-m", "app.worker"]
     environment:
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/campaigns
-      JWT_SECRET_KEY: replace-this-in-real-deployments
-      FRONTEND_ORIGIN: http://localhost:5173
-      COOKIE_SECURE: "false"
-      PUBLIC_BASE_URL: http://localhost:8000
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-campaigns}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-replace-this-in-real-deployments}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
     depends_on:
       api:
         condition: service_healthy
