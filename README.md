@@ -13,17 +13,134 @@ Core workflows:
 
 Without SMTP, execution intentionally remains queued and never reports a message as sent.
 
-## Local
-```
-cp .env.example .env
-docker compose up
+## Requirements
+
+- Docker Engine/Desktop with Docker Compose v2 for the Docker workflow.
+- Python 3.11+ and pip for the Python-only workflow.
+- SMTP credentials are optional. Without SMTP configuration, campaign deliveries remain queued by design.
+
+## Docker
+
+The backend repository is independently runnable:
+
+```bash
+docker compose up --build
 ```
 
-Python-only:
+This starts:
+- PostgreSQL 16 on port 5432.
+- FastAPI on port 8000.
+- The existing scheduler worker that checks for due/queued campaigns every 15 seconds.
+
+The API container waits for PostgreSQL health before starting and applies Alembic migrations before launching FastAPI. The worker starts after the API health check succeeds.
+
+The API health endpoint is:
+
 ```
+http://localhost:8000/health
+```
+
+### Environment variables
+
+The application reads its existing settings from `.env`. The Docker Compose development stack supplies the database connection and development runtime settings directly so it can start without a manually created `.env`.
+
+For non-Docker or custom deployments, copy the example:
+
+```bash
+cp .env.example .env
+```
+
+Important variables include:
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `FRONTEND_ORIGIN`
+- `COOKIE_SECURE`
+- `PUBLIC_BASE_URL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_USE_TLS`
+
+Do not commit real secrets.
+
+For non-development environments, use a strong `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`, as enforced by the existing runtime validation.
+
+### Database and migrations
+
+PostgreSQL is required by the normal Docker development stack. The database is persisted in the `campaign_postgres` Docker volume.
+
+The API image runs:
+
+```bash
+alembic upgrade head
+```
+
+before starting Uvicorn, so the database schema is brought up to the current migration before the API accepts traffic.
+
+For the Python-only workflow, PostgreSQL must already be running and reachable through `DATABASE_URL`:
+
+```bash
 python -m pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-In non-development environments set a strong JWT_SECRET_KEY and COOKIE_SECURE=true.
+### Redis / queues / workers
+
+Redis, Celery, RabbitMQ and Kafka are not part of this application. The existing `app.worker` process is a lightweight database-backed scheduler/worker and is included as a separate Compose service.
+
+### SMTP
+
+SMTP is optional. When `SMTP_HOST` and `SMTP_FROM_EMAIL` are not configured, execution creates durable queued deliveries but does not mark them as sent.
+
+When SMTP is configured, the existing delivery service sends messages through the configured SMTP server and records sent/failed delivery state.
+
+### Stop
+
+```bash
+docker compose down
+```
+
+To also remove the persisted PostgreSQL development volume:
+
+```bash
+docker compose down -v
+```
+
+### Rebuild
+
+```bash
+docker compose up --build
+```
+
+## Frontend integration
+
+The separately maintained frontend uses the existing `VITE_API_URL` variable and defaults to:
+
+```
+http://localhost:8000
+```
+
+When running both repositories locally, start the backend on port 8000 and configure the frontend's `VITE_API_URL` to that address.
+
+The backend allows credentialed CORS only for the configured `FRONTEND_ORIGIN`.
+
+## Local development
+
+```bash
+python -m pip install -e ".[dev]"
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+The existing frontend Playwright integration tests start the backend with Uvicorn and expect the backend health endpoint on port 8000. The test configuration can use an existing backend directory through `BACKEND_DIR`.
+
+## API
+
+FastAPI's generated API documentation is available at:
+
+```
+http://localhost:8000/docs
+```
