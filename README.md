@@ -19,6 +19,26 @@ Without SMTP, execution intentionally remains queued and never reports a message
 - Python 3.11+ and pip for the Python-only workflow.
 - SMTP credentials are optional. Without SMTP configuration, campaign deliveries remain queued by design.
 
+## One-command backend startup
+
+From the backend repository, run:
+
+```bash
+python run.py
+```
+
+`run.py` is backend-only. It starts the existing Docker Compose stack and keeps these backend components running together:
+
+- PostgreSQL 16 on port 5432.
+- FastAPI on port 8000, including the existing Alembic migration step before API startup.
+- The existing database-backed scheduler worker, which runs every 15 seconds.
+
+The script waits for the API's `/health` endpoint, which also verifies PostgreSQL connectivity, before reporting the backend as ready. Press `Ctrl+C` to stop the stack; the script runs `docker compose down` for the services it started.
+
+Redis, Celery, RabbitMQ and Kafka are not started because this backend does not require them.
+
+For a custom health URL, set `BACKEND_HEALTH_URL` before running the script. The normal development value is `http://127.0.0.1:8000/health`.
+
 ## Docker
 
 The backend repository is independently runnable:
