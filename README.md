@@ -87,7 +87,7 @@ Important variables include:
 
 Do not commit real secrets.
 
-For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders, the development PostgreSQL password, and enforces these cookie/HTTPS requirements. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker.
+For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders, the development PostgreSQL password, and enforces these cookie/HTTPS requirements. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker. Because the session cookie is `SameSite=Strict`, deploy the frontend and API on HTTPS custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`). Unrelated default provider domains may cause browsers to block the session cookie.
 
 ### Database and migrations
 
