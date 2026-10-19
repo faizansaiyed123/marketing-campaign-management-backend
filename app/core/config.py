@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     def validate_runtime_security(self):
         env = self.environment.lower()
         if env not in {"development", "test"}:
-            if self.jwt_secret_key == "change-me-in-development":
+            secret = self.jwt_secret_key.strip().lower()
+            if secret.startswith(("replace-", "change-me-", "your-secret", "example-secret")):
                 raise ValueError("JWT_SECRET_KEY must be replaced outside development/test")
             if len(self.jwt_secret_key) < 32:
                 raise ValueError("JWT_SECRET_KEY must be at least 32 characters outside development/test")

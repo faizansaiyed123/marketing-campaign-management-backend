@@ -75,6 +75,7 @@ Important variables include:
 - `JWT_SECRET_KEY`
 - `FRONTEND_ORIGIN`
 - `COOKIE_SECURE`
+- `COOKIE_NAME`
 - `PUBLIC_BASE_URL`
 - `SMTP_HOST`
 - `SMTP_PORT`
@@ -85,7 +86,7 @@ Important variables include:
 
 Do not commit real secrets.
 
-For non-development environments, use a strong `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`, as enforced by the existing runtime validation.
+For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders and enforces these cookie/HTTPS requirements. Docker Compose passes `COOKIE_NAME` to both the API and worker.
 
 ### Database and migrations
 

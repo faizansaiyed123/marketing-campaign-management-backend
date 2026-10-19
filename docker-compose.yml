@@ -22,6 +22,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-replace-this-in-real-deployments}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      COOKIE_NAME: "${COOKIE_NAME:-campaign_session}"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -50,6 +51,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-replace-this-in-real-deployments}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      COOKIE_NAME: "${COOKIE_NAME:-campaign_session}"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

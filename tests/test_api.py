@@ -97,13 +97,31 @@ def test_invalid_password_hash_is_rejected(client):
     assert client.post("/api/v1/auth/login",json={"email":"corrupt@example.com","password":"strong-password-123"}).status_code==401
 
 def test_production_security_defaults_are_rejected():
-    from pydantic import ValidationError
+    import pytest
     from app.core.config import Settings
-    try:
-        Settings(environment="production",jwt_secret_key="change-me-in-development",cookie_secure=False)
-        assert False, "unsafe production defaults were accepted"
-    except ValidationError:
-        pass
+
+    secure_settings = {
+        "environment": "production",
+        "cookie_secure": True,
+        "cookie_name": "__Host-campaign_session",
+        "frontend_origin": "https://frontend.example.com",
+        "public_base_url": "https://api.example.com",
+    }
+    for placeholder in (
+        "change-me-in-development",
+        "replace-with-a-long-random-secret",
+        "replace-this-in-real-deployments",
+    ):
+        with pytest.raises(ValueError, match="JWT_SECRET_KEY must be replaced"):
+            Settings(jwt_secret_key=placeholder, **secure_settings)
+
+    with pytest.raises(ValueError, match="COOKIE_NAME must use the __Host- prefix"):
+        Settings(
+            jwt_secret_key="unique-random-production-secret-9f8a7c6d5e4b3a2",
+            cookie_name="campaign_session",
+            **{key: value for key, value in secure_settings.items() if key != "cookie_name"},
+        )
+
 
 def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
@@ -367,6 +385,28 @@ def test_logout_sets_security_headers(client):
     assert response.headers["clear-site-data"] == '"cache", "cookies", "storage"'
     assert client.get("/api/v1/auth/me").status_code == 401
 
+
+
+def test_logout_deletes_secure_host_cookie(monkeypatch, client):
+    from app.core.config import Settings
+    from app.routers import auth as auth_router
+
+    settings = Settings(
+        environment="test",
+        cookie_name="__Host-campaign_session",
+        cookie_secure=True,
+    )
+    monkeypatch.setattr(auth_router, "get_settings", lambda: settings)
+
+    response = client.post("/api/v1/auth/logout")
+    cookie = response.headers["set-cookie"].lower()
+
+    assert response.status_code == 204
+    assert cookie.startswith("__host-campaign_session=")
+    assert "secure" in cookie
+    assert "httponly" in cookie
+    assert "samesite=strict" in cookie
+    assert "path=/" in cookie
 
 def test_cors_preflight_allows_configured_frontend_origin(client):
     response = client.options(

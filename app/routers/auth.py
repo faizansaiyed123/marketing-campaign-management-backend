@@ -58,7 +58,14 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 @router.post("/logout", status_code=204)
 def logout(response: Response):
-    response.delete_cookie(get_settings().cookie_name, path="/")
+    settings = get_settings()
+    response.delete_cookie(
+        settings.cookie_name,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="strict",
+    )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
 
