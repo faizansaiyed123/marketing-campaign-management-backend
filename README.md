@@ -72,6 +72,7 @@ cp .env.example .env
 
 Important variables include:
 - `DATABASE_URL`
+- `POSTGRES_PASSWORD` (Docker Compose database credential)
 - `JWT_SECRET_KEY`
 - `FRONTEND_ORIGIN`
 - `COOKIE_SECURE`
@@ -86,7 +87,7 @@ Important variables include:
 
 Do not commit real secrets.
 
-For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders and enforces these cookie/HTTPS requirements. Docker Compose passes `COOKIE_NAME` to both the API and worker.
+For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders, the development PostgreSQL password, and enforces these cookie/HTTPS requirements. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker.
 
 ### Database and migrations
 

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 class Settings(BaseSettings):
     app_name: str = "Campaign Management API"
@@ -37,6 +38,14 @@ class Settings(BaseSettings):
                 raise ValueError("COOKIE_NAME must use the __Host- prefix outside development/test")
             if self.frontend_origin and not self.frontend_origin.startswith("https://"):
                 raise ValueError("FRONTEND_ORIGIN must use HTTPS outside development/test")
+            database_password = make_url(self.database_url).password
+            normalized_password = (database_password or "").strip().lower()
+            if (
+                not normalized_password
+                or normalized_password in {"postgres", "password", "changeme"}
+                or normalized_password.startswith(("replace-", "change-me-", "your-secret", "example-secret"))
+            ):
+                raise ValueError("DATABASE_URL must use a unique database password outside development/test")
         return self
 
 @lru_cache

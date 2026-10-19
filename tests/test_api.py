@@ -106,6 +106,7 @@ def test_production_security_defaults_are_rejected():
         "cookie_name": "__Host-campaign_session",
         "frontend_origin": "https://frontend.example.com",
         "public_base_url": "https://api.example.com",
+        "database_url": "postgresql+psycopg://campaign_app:db-random-secret-3a7bed038f@db.example.com:5432/campaigns",
     }
     for placeholder in (
         "change-me-in-development",
@@ -122,6 +123,22 @@ def test_production_security_defaults_are_rejected():
             **{key: value for key, value in secure_settings.items() if key != "cookie_name"},
         )
 
+
+
+def test_production_security_rejects_default_database_password():
+    import pytest
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError, match="DATABASE_URL must use a unique database password"):
+        Settings(
+            environment="production",
+            jwt_secret_key="unique-random-production-secret-9f8a7c6d5e4b3a2",
+            cookie_secure=True,
+            cookie_name="__Host-campaign_session",
+            frontend_origin="https://frontend.example.com",
+            public_base_url="https://api.example.com",
+            database_url="postgresql+psycopg://postgres:postgres@db.example.com:5432/campaigns",
+        )
 
 def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
