@@ -1,7 +1,7 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Status — October 20, 2026
-Production-readiness work is committed on main. The latest migration-ID fix passed CI at revision `39d4ccdf69440a1b65aee9763010bde6529cc895` (https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404581186).
+Production-readiness work is committed on main. The latest `main` revision before this documentation refresh, `21660873998b68a6d292f2c4c2de602c669dd206`, passed the full backend CI (https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404980479).
 - Shared authentication rate limits use atomic Redis rolling windows; missing/unavailable Redis fails authentication closed, and production readiness checks both PostgreSQL and Redis.
 - Cookie-authenticated mutations reject foreign Origin requests and cross-site Fetch Metadata requests; CORS is credentialed and limited to the configured frontend origin.
 - Production settings validate database/JWT/Redis passwords, HTTPS origins, secure __Host- cookie settings, SMTP sender syntax and verified TLS mode.
@@ -19,11 +19,11 @@ Production-readiness work is committed on main. The latest migration-ID fix pass
 - run.py accurately describes PostgreSQL + Redis + API + worker.
 
 ## Repositories and CI
-- Current `main` commit before this progress-only update: `39d4ccdf69440a1b65aee9763010bde6529cc895`
+- Verified backend code/configuration revision before this progress-only update: `21660873998b68a6d292f2c4c2de602c669dd206`
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
-- Backend application code verified by CI: 39d4ccdf69440a1b65aee9763010bde6529cc895
-- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404581186
+- Backend application, migration and configuration checks passed on the revision above.
+- Backend CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404980479
 - CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, both production Compose variants including derived tracking URL checks, both Caddyfiles, Docker image build, and non-root API runtime.
 
 ## Delivery and report semantics
