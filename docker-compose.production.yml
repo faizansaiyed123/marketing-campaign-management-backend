@@ -21,7 +21,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - public_proxy
+      public_proxy:
+        ipv4_address: 172.30.240.2
     depends_on:
       api:
         condition: service_healthy

@@ -76,6 +76,7 @@ jobs:
           POSTGRES_DB: campaigns
           POSTGRES_PASSWORD: 8b2f7e6a3c1d9e0f4a8b7c6d5e4f3a291817161514131211
           REDIS_PASSWORD: 4c09f1c8aab8d14e905e1f1f7f03e6c1a55bb8be1f62d540
+          FORWARDED_ALLOW_IPS: 172.30.240.2,127.0.0.1
           SMTP_HOST: smtp.example.com
           SMTP_FROM_EMAIL: ci@example.com
           JWT_SECRET_KEY: ci-only-production-secret-0123456789abcdef0123456789abcdef

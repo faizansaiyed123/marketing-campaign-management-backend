@@ -57,7 +57,7 @@ This starts:
 
 The API container waits for PostgreSQL health before starting and applies Alembic migrations before launching FastAPI. The worker starts after the API health check succeeds.
 
-For local development, Compose binds the database and API host ports to loopback only; Redis has no published host port. Do not expose the raw HTTP API port or PostgreSQL directly to the public internet. Production login and registration limits use atomic Redis-backed rolling windows shared across API workers/replicas: 10 login attempts per source IP per minute and 5 registrations per source IP per hour. If Redis is unavailable or its URL is missing, authentication fails closed with HTTP 503 rather than bypassing the protection. Caddy overwrites X-Forwarded-For with the client address it sees; Uvicorn trusts only the configured Docker proxy subnet. The included Caddyfile terminates TLS and routes traffic, while application rate limiting is handled by Redis.
+For local development, Compose binds the database and API host ports to loopback only; Redis has no published host port. Do not expose the raw HTTP API port or PostgreSQL directly to the public internet. Production login and registration limits use atomic Redis-backed rolling windows shared across API workers/replicas: 10 login attempts per source IP per minute and 5 registrations per source IP per hour. If Redis is unavailable or its URL is missing, authentication fails closed with HTTP 503 rather than bypassing the protection. Caddy overwrites X-Forwarded-For with the client address it sees; Uvicorn trusts only Caddy's fixed address on the private proxy network, not the whole Docker bridge range. The included Caddyfile terminates TLS and routes traffic, while application rate limiting is handled by Redis.
 
 The API health endpoint is:
 
@@ -84,7 +84,7 @@ Important variables include:
 - `COOKIE_NAME`
 - `PUBLIC_BASE_URL`
 - `REDIS_PASSWORD` and (for non-Compose runs) `REDIS_URL`
-- `FORWARDED_ALLOW_IPS` (change only if the trusted Docker proxy network uses another subnet)
+- `FORWARDED_ALLOW_IPS` (defaults to `172.30.240.2,127.0.0.1`; keep the Caddy IP and this list synchronized if you change the proxy network)
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -150,11 +150,13 @@ The optional `docker-compose.production.yml` overlay adds Caddy as the public TL
 
 This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy service. It assumes a Linux server/VPS with Docker Engine and Compose v2, public DNS control, and a persistent disk. It does **not** provision the server, DNS, firewall, or SMTP account for you.
 
-1. Create the shared Docker network once per server:
+1. Create the shared Docker network once per server. First check that `172.30.240.0/24` does not conflict with a LAN, VPN, or an existing Docker network; choose another unused private subnet if needed. Caddy uses the fixed address `172.30.240.2`, and Uvicorn trusts only that address for forwarded headers:
 
    ```bash
-   docker network create campaign_proxy
+   docker network create --driver bridge --subnet 172.30.240.0/24 --gateway 172.30.240.1 campaign_proxy
    ```
+
+   If you choose another subnet, update the Caddy static address in `docker-compose.production.yml` and `FORWARDED_ALLOW_IPS` in the backend `.env` together.
 
 2. In the backend repository, copy `.env.example` to `.env` and set these production values. Generate the secrets on the server; never commit `.env`:
 
@@ -165,6 +167,7 @@ This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy servi
    POSTGRES_PASSWORD=<output of openssl rand -hex 24>
    JWT_SECRET_KEY=<output of openssl rand -hex 32>
    REDIS_PASSWORD=<output of openssl rand -hex 24>
+   FORWARDED_ALLOW_IPS=172.30.240.2,127.0.0.1
    SMTP_HOST=smtp.your-provider.example
    SMTP_PORT=587
    SMTP_USERNAME=<provider username, if required>
