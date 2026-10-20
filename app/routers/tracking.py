@@ -77,9 +77,13 @@ def click_track(
         raise HTTPException(400, "Only absolute HTTP(S) links can be tracked")
 
     delivery = _delivery(tracking_token, db)
+    # Validate clicks against the exact campaign version delivered, even if
+    # the owner later edits a failed/partial campaign before retrying.
+    campaign_subject = delivery.run.subject_snapshot or delivery.run.campaign.subject
+    campaign_body_html = delivery.run.body_html_snapshot or delivery.run.campaign.body_html
     _, personalized_body = render_personalized_content(
-        delivery.run.campaign.subject,
-        delivery.run.campaign.body_html,
+        campaign_subject,
+        campaign_body_html,
         delivery.contact,
     )
     if url not in extract_http_links(personalized_body):

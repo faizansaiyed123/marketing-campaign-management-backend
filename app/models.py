@@ -78,6 +78,8 @@ class CampaignRun(Base):
     __tablename__="campaign_runs"
     id: Mapped[str]=mapped_column(String(36),primary_key=True)
     campaign_id: Mapped[str]=mapped_column(ForeignKey("campaigns.id",ondelete="CASCADE"),index=True)
+    subject_snapshot: Mapped[str | None]=mapped_column(String(200),nullable=True)
+    body_html_snapshot: Mapped[str | None]=mapped_column(Text,nullable=True)
     status: Mapped[str]=mapped_column(String(24),default="queued",index=True)
     total_recipients: Mapped[int]=mapped_column(Integer,default=0)
     sent_count: Mapped[int]=mapped_column(Integer,default=0)

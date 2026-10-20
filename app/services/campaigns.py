@@ -83,6 +83,8 @@ def queue_campaign(
     run = CampaignRun(
         id=str(uuid4()),
         campaign_id=campaign.id,
+        subject_snapshot=campaign.subject,
+        body_html_snapshot=campaign.body_html,
         total_recipients=len(contacts),
     )
     db.add(run)
@@ -314,9 +316,11 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                     delivery.error_message = None
                     continue
 
+                campaign_subject = run.subject_snapshot or run.campaign.subject
+                campaign_body_html = run.body_html_snapshot or run.campaign.body_html
                 personalized_subject, personalized_body = render_personalized_content(
-                    run.campaign.subject,
-                    run.campaign.body_html,
+                    campaign_subject,
+                    campaign_body_html,
                     contact,
                 )
                 message = EmailMessage(policy=policy.SMTP)

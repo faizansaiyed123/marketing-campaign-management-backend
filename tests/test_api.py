@@ -667,6 +667,106 @@ def test_blank_names_are_rejected(client):
 
 
 
+def test_previous_run_tracking_survives_partial_campaign_edit(client, monkeypatch):
+    register(client, "campaign-snapshot@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Snapshot Audience"}).json()
+    sent_contact = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "sent-first@example.com", "first_name": "Sent"},
+    ).json()
+    failed_contact = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "failed-second@example.com", "first_name": "Failed"},
+    ).json()
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Snapshot campaign",
+            "audience_id": audience["id"],
+            "subject": "Original subject",
+            "body_html": '<a href="https://old.example/path">Old destination</a>',
+        },
+    ).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import CampaignRun, Delivery
+
+    class PartialSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self, *args, **kwargs): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message):
+            if message["To"] == "failed-second@example.com":
+                return {message["To"]: (550, b"mailbox unavailable")}
+            return {}
+        def quit(self): pass
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.provider.test",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@campaign.test",
+        smtp_use_tls=True,
+        smtp_use_ssl=False,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "smtplib", SimpleNamespace(SMTP=PartialSMTP, SMTP_SSL=PartialSMTP))
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+
+    response = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert response.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    report = client.get(f"/api/v1/campaigns/{campaign['id']}/report").json()
+    assert report["latest_run_status"] == "partial"
+    assert report["summary"]["sent"] == 1
+    assert report["summary"]["failed"] == 1
+
+    with Session(engine) as db:
+        run = db.scalar(
+            select(CampaignRun)
+            .where(CampaignRun.campaign_id == campaign["id"])
+            .order_by(CampaignRun.started_at.desc())
+        )
+        delivery = db.scalar(
+            select(Delivery).where(
+                Delivery.run_id == run.id,
+                Delivery.contact_id == sent_contact["id"],
+            )
+        )
+        tracking_token = delivery.tracking_token
+        assert run.subject_snapshot == "Original subject"
+        assert "old.example/path" in run.body_html_snapshot
+
+    edited = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={
+            "subject": "Updated subject for retry",
+            "body_html": '<a href="https://new.example/path">New destination</a>',
+        },
+    )
+    assert edited.status_code == 200, edited.text
+
+    old_link = client.get(
+        f"/track/{tracking_token}/click",
+        params={"url": "https://old.example/path"},
+        follow_redirects=False,
+    )
+    assert old_link.status_code == 307
+    assert old_link.headers["location"] == "https://old.example/path"
+
+    new_link = client.get(
+        f"/track/{tracking_token}/click",
+        params={"url": "https://new.example/path"},
+        follow_redirects=False,
+    )
+    assert new_link.status_code == 400
+
+
 def test_smtp_recipient_refusal_is_recorded_as_failed(client, monkeypatch):
     register(client, "smtp-refused@example.com")
     audience = client.post("/api/v1/audiences", json={"name": "SMTP Refusal"}).json()
