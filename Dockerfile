@@ -16,4 +16,6 @@ RUN pip install --no-cache-dir . \
 
 USER 10001:10001
 
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+ENV FORWARDED_ALLOW_IPS=172.16.0.0/12,127.0.0.1
+
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]

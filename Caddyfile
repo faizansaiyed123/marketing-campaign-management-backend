@@ -1,10 +1,16 @@
 {$FRONTEND_DOMAIN} {
     encode zstd gzip
     header Strict-Transport-Security "max-age=31536000"
-    reverse_proxy campaign-frontend:8080
+    reverse_proxy campaign-frontend:8080 {
+        # Replace client-supplied forwarding headers with the address Caddy sees.
+        header_up X-Forwarded-For {remote_host}
+    }
 }
 
 {$API_DOMAIN} {
     encode zstd gzip
-    reverse_proxy campaign-api:8000
+    reverse_proxy campaign-api:8000 {
+        # Uvicorn trusts only the Docker proxy network; don't preserve spoofed XFF chains.
+        header_up X-Forwarded-For {remote_host}
+    }
 }
