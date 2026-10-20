@@ -1072,6 +1072,9 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
     assert first_report["summary"]["sent"]==1
     assert first_report["summary"]["failed"]==1
     assert first_report["latest_run_status"]=="partial"
+    edited=client.patch(f"/api/v1/campaigns/{camp['id']}",json={"subject":"Updated retry subject"})
+    assert edited.status_code==200
+    assert edited.json()["status"]=="partial"
     assert first_report["summary"]["total"] == 2
 
     state["attempt"]=1

@@ -103,7 +103,12 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
         if not audience: raise HTTPException(404,"Audience not found")
     for key,value in data.items():
         setattr(campaign,key,value)
-    campaign.status="scheduled" if campaign.scheduled_at and campaign.scheduled_at>datetime.now(timezone.utc) else "draft"
+    if campaign.scheduled_at and campaign.scheduled_at>datetime.now(timezone.utc):
+        campaign.status="scheduled"
+    elif campaign.status not in {"failed", "partial"}:
+        # Preserve the failed/partial marker after edits so execute retries only
+        # failed deliveries instead of resending to successful recipients.
+        campaign.status="draft"
     db.commit()
     db.refresh(campaign)
     return response(campaign)
