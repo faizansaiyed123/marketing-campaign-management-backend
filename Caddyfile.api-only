@@ -1,0 +1,8 @@
+{$API_DOMAIN} {
+    encode zstd gzip
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    reverse_proxy campaign-api:8000 {
+        # Replace client-supplied forwarding headers with the address Caddy sees.
+        header_up X-Forwarded-For {remote_host}
+    }
+}
