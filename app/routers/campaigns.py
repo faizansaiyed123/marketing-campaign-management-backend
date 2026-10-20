@@ -41,6 +41,7 @@ def build_report(db,c,run=None):
             queued=sum(d.status=="queued" for d in deliveries),
             sent=sum(d.status=="sent" for d in deliveries),
             failed=sum(d.status=="failed" for d in deliveries),
+            skipped=sum(d.status=="skipped" for d in deliveries),
             opened=counts["open"],
             clicked=counts["click"],
         ),

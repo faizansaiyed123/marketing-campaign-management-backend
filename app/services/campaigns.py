@@ -211,10 +211,17 @@ def _finalize_run(db: Session, run_id: str) -> CampaignRun | None:
             Delivery.status == "failed",
         )
     ) or 0
+    skipped = db.scalar(
+        select(func.count(Delivery.id)).where(
+            Delivery.run_id == run.id,
+            Delivery.status == "skipped",
+        )
+    ) or 0
 
     run.sent_count = sent
     run.failed_count = failed
-    if run.total_recipients == 0:
+    run.skipped_count = skipped
+    if run.total_recipients == 0 or (sent == 0 and failed == 0 and skipped > 0):
         run.status = "completed"
     else:
         run.status = "sent" if failed == 0 else ("failed" if sent == 0 else "partial")
@@ -277,15 +284,27 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                 if delivery is None:
                     break
 
+                # Check the subscription status immediately before sending. The
+                # contact row lock serializes this check with a concurrent unsubscribe.
+                contact = db.scalar(
+                    select(Contact)
+                    .where(Contact.id == delivery.contact_id)
+                    .with_for_update()
+                )
+                if contact is None or contact.unsubscribed_at is not None:
+                    delivery.status = "skipped"
+                    delivery.error_message = None
+                    continue
+
                 personalized_subject, personalized_body = render_personalized_content(
                     run.campaign.subject,
                     run.campaign.body_html,
-                    delivery.contact,
+                    contact,
                 )
                 message = EmailMessage(policy=policy.SMTP)
                 message["Subject"] = personalized_subject or "Campaign message"
                 message["From"] = settings.smtp_from_email
-                message["To"] = delivery.contact.email
+                message["To"] = contact.email
                 message["List-Unsubscribe"] = (
                     f"<{settings.public_base_url.rstrip('/')}/track/"
                     f"{delivery.tracking_token}/unsubscribe>"

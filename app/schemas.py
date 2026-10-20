@@ -149,6 +149,7 @@ class DeliverySummary(BaseModel):
     queued: int
     sent: int
     failed: int
+    skipped: int
     opened: int
     clicked: int
 

@@ -82,6 +82,7 @@ class CampaignRun(Base):
     total_recipients: Mapped[int]=mapped_column(Integer,default=0)
     sent_count: Mapped[int]=mapped_column(Integer,default=0)
     failed_count: Mapped[int]=mapped_column(Integer,default=0)
+    skipped_count: Mapped[int]=mapped_column(Integer,default=0)
     started_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now_utc)
     finished_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     campaign: Mapped[Campaign]=relationship(back_populates="runs")

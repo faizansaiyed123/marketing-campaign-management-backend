@@ -869,6 +869,69 @@ def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, m
     assert report["summary"]["sent"] == 1
 
 
+def test_worker_skips_contacts_unsubscribed_after_campaign_is_queued(client, monkeypatch):
+    register(client, "unsubscribe-race@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Unsubscribe race"}).json()
+    contact = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "contact@example.com", "first_name": "Test"},
+    ).json()
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Unsubscribe before send",
+            "audience_id": audience["id"],
+            "subject": "A message",
+            "body_html": "<p>Hello {{first_name}}</p>",
+        },
+    ).json()
+
+    queued = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert queued.status_code == 202
+    assert queued.json()["summary"]["queued"] == 1
+
+    unsubscribed = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts/{contact['id']}/unsubscribe"
+    )
+    assert unsubscribed.status_code == 200
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self, *args, **kwargs): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message): sent.append(message)
+        def quit(self): pass
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.provider.test",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@campaign.test",
+        smtp_use_tls=True,
+        smtp_use_ssl=False,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "smtplib", SimpleNamespace(SMTP=FakeSMTP, SMTP_SSL=FakeSMTP))
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+
+    run_worker_with_test_database(monkeypatch, settings)
+
+    assert sent == []
+    report = client.get(f"/api/v1/campaigns/{campaign['id']}/report").json()
+    assert report["latest_run_status"] == "completed"
+    assert report["summary"]["total"] == 1
+    assert report["summary"]["queued"] == 0
+    assert report["summary"]["sent"] == 0
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["skipped"] == 1
+
+
 def test_smtp_success_sends_and_tracks(client,monkeypatch):
     register(client,"smtp-success@example.com")
     a=client.post("/api/v1/audiences",json={"name":"SMTP Success"}).json()
