@@ -61,3 +61,5 @@ jobs:
         run: docker compose config
       - name: Build API image
         run: docker build --pull=false -t campaign-management-api:ci .
+      - name: Verify API image runs as non-root
+        run: test "$(docker run --rm --entrypoint id campaign-management-api:ci -u)" = "10001"

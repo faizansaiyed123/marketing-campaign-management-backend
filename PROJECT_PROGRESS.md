@@ -26,6 +26,10 @@ Branches discovered: `main`, `development`, `chore/startup-docker-support`.
 - `docker-compose.yml`: explicitly propagates `COOKIE_NAME` into both API and worker environments.
 - `app/core/config.py`: rejects common JWT placeholder prefixes in production; additionally rejects missing or well-known/default PostgreSQL database passwords outside development/test.
 - `app/routers/auth.py`: logout expires the session cookie with matching HttpOnly, Secure, SameSite=Strict, and Path attributes.
+- `Dockerfile`: API and worker image use a dedicated UID 10001 instead of root; bytecode writes are disabled.
+- `docker-compose.yml`: local database and API host ports bind to loopback only, preventing accidental direct LAN/public exposure.
+- `app/main.py`: applies nosniff, frame-denial, no-referrer, and restrictive permissions headers across responses.
+- `.github/workflows/ci.yml`: adds a container check to ensure the API image runs as UID 10001.
 - `tests/test_api.py`: added regression coverage for JWT placeholders, invalid production cookie names, default database password rejection, and production cookie deletion attributes.
 - `README.md`: documented production JWT/cookie/database prerequisites and the SameSite=Strict custom-domain requirement.
 - `PROJECT_PROGRESS.md`: retained this audit checkpoint.
@@ -47,7 +51,10 @@ Branches discovered: `main`, `development`, `chore/startup-docker-support`.
 - PostgreSQL, migrations, hosting/DNS/TLS, and optional SMTP remain deployment prerequisites.
 - No secrets are stored here.
 
+## Latest container hardening commit and pending verification
+- The non-root Docker runtime, loopback-only host port bindings, and application security headers were committed to `main` at `7573e4fa197212ea9d36b1817ed1220b68694a1c`.
+- The next CI run must validate PostgreSQL-backed tests, Compose configuration, Docker image build, and the explicit non-root UID check before this phase is considered verified.
+
 ## Next action
-1. Verify the final CI conclusion for the documentation/progress-only commit.
-2. Re-check final remote heads and latest CI conclusions for both repositories.
-3. Record final commit SHAs and the external deployment setup still required.
+1. Verify the backend hardening CI run and non-root UID check.
+2. Re-check final remote heads and deployment prerequisites.
