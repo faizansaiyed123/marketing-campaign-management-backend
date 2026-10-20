@@ -549,6 +549,7 @@ def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, m
     html = message.get_body(preferencelist=("html",)).get_content()
     assert "O'Connor <b>" in plain
     assert "alice@example.com" in plain
+    assert "/track/" in plain and "Unsubscribe:" in plain
     assert "O&#x27;Connor &lt;b&gt;" in html
     assert "alice@example.com" in html
     assert "{{full_name}}" not in html
@@ -595,8 +596,11 @@ def test_smtp_success_sends_and_tracks(client,monkeypatch):
     assert report["campaign"]["status"]=="sent"
     assert len(sent)==1
     html=sent[0].get_body(preferencelist=("html",)).get_content()
+    plain=sent[0].get_body(preferencelist=("plain",)).get_content()
     assert "/click?url=https%3A%2F%2Fexample.com%2Fwelcome" in html
+    assert "/click?url=https%3A%2F%2Fexample.com%2Fwelcome" in plain
     assert "/unsubscribe" in html
+    assert "Unsubscribe: http://localhost:8000/track/" in plain
 
 def test_smtp_sends_multiple_recipients(client,monkeypatch):
     register(client,"smtp-success@example.com")

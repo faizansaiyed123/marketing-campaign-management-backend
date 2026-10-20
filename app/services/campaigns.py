@@ -93,9 +93,11 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
     db.refresh(run)
     return run
 
-def extract_http_links(body_html: str) -> set[str]:
-    """Return exact absolute HTTP(S) href targets present in campaign HTML."""
-    return {unescape(match.group(3)) for match in LINK_RE.finditer(body_html)}
+def extract_http_links(body_html: str) -> list[str]:
+    """Return distinct absolute HTTP(S) href targets in their document order."""
+    return list(dict.fromkeys(
+        unescape(match.group(3)) for match in LINK_RE.finditer(body_html)
+    ))
 
 
 def _rewrite_links(body_html: str, tracking_token: str) -> str:
@@ -128,6 +130,22 @@ def build_tracked_html(campaign: Campaign, delivery: Delivery, body_html: str | 
 
 def _plain_text(html_body: str) -> str:
     return unescape(re.sub(r"<[^>]+>", " ", html_body)).strip()
+
+def build_tracked_plain_text(body_html: str, delivery: Delivery) -> str:
+    """Build a plain-text alternative with tracked destinations and unsubscribe."""
+    plain_body = _plain_text(body_html) or "Campaign message"
+    base = get_settings().public_base_url.rstrip("/")
+    links = extract_http_links(body_html)
+    if links:
+        tracked_links = [
+            f"{base}/track/{delivery.tracking_token}/click?url={quote(target, safe='')}"
+            for target in links
+        ]
+        plain_body += "\n\nLinks:\n" + "\n".join(tracked_links)
+
+    unsubscribe_url = f"{base}/track/{delivery.tracking_token}/unsubscribe"
+    plain_body += f"\n\nUnsubscribe: {unsubscribe_url}"
+    return plain_body
 
 def render_personalized_content(subject: str, body_html: str, contact: Contact) -> tuple[str, str]:
     """Merge supported contact fields into a campaign subject and HTML body.
@@ -264,7 +282,7 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                     f"{delivery.tracking_token}/unsubscribe>"
                 )
                 message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-                message.set_content(_plain_text(personalized_body) or "Campaign message")
+                message.set_content(build_tracked_plain_text(personalized_body, delivery))
                 message.add_alternative(
                     build_tracked_html(run.campaign, delivery, body_html=personalized_body),
                     subtype="html",
