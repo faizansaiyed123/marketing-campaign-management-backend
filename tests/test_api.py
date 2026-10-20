@@ -12,6 +12,113 @@ def run_worker_with_test_database(monkeypatch, settings):
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     return worker.process_due_campaigns()
 
+def _write_mock_docker(tmp_path):
+    import os
+    import stat
+    import textwrap
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker_path = bin_dir / "docker"
+    docker_path.write_text(textwrap.dedent("""\
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf '%s\\n' "$*" >> "$DOCKER_CALLS_LOG"
+        case "$*" in
+          *pg_dump*)
+            printf 'mock-custom-format-archive\\n'
+            ;;
+          *'printf "%s" "$POSTGRES_DB"'*)
+            printf 'campaigns'
+            ;;
+          *pg_restore*)
+            cat >/dev/null
+            ;;
+        esac
+    """))
+    docker_path.chmod(docker_path.stat().st_mode | stat.S_IXUSR)
+    env = os.environ.copy()
+    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+    env["DOCKER_CALLS_LOG"] = str(tmp_path / "docker-calls.log")
+    env["HOME"] = str(tmp_path / "home")
+    (tmp_path / "home").mkdir()
+    return env, tmp_path / "docker-calls.log"
+
+
+def test_postgres_backup_script_writes_private_validated_dump(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    env, call_log = _write_mock_docker(tmp_path)
+    env["BACKUP_DIR"] = str(tmp_path / "backups")
+    result = subprocess.run(
+        ["bash", str(root / "scripts/backup_postgres.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    backups = list((tmp_path / "backups").glob("campaigns-*.dump"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == "mock-custom-format-archive\\n"
+    assert os.stat(backups[0]).st_mode & 0o777 == 0o600
+    calls = call_log.read_text()
+    assert "pg_dump" in calls
+    assert "pg_restore --list" in calls
+    assert "WARNING: this backup is only on the current host" in result.stderr
+
+
+def test_postgres_restore_requires_a_separate_database(tmp_path):
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    env, call_log = _write_mock_docker(tmp_path)
+    env["RESTORE_DATABASE"] = "campaigns"
+    backup_file = tmp_path / "campaigns-test.dump"
+    backup_file.write_text("mock-custom-format-archive\\n")
+    result = subprocess.run(
+        ["bash", str(root / "scripts/restore_postgres.sh"), str(backup_file)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "Refusing to restore over the configured live database" in result.stderr
+    assert "createdb" not in call_log.read_text()
+
+
+def test_postgres_restore_creates_and_populates_a_separate_database(tmp_path):
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    env, call_log = _write_mock_docker(tmp_path)
+    env["RESTORE_DATABASE"] = "campaigns_restore_test"
+    backup_file = tmp_path / "campaigns-test.dump"
+    backup_file.write_text("mock-custom-format-archive\\n")
+    result = subprocess.run(
+        ["bash", str(root / "scripts/restore_postgres.sh"), str(backup_file)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    calls = call_log.read_text()
+    assert "pg_restore --list" in calls
+    assert "createdb" in calls
+    assert "campaigns_restore_test" in calls
+    assert "pg_restore --no-owner --no-acl --exit-on-error" in calls
+    assert "pg_restore --clean" not in calls
+    assert "Restored the archive" not in result.stdout
+    assert "live application still uses campaigns" in result.stdout
+
+
 def test_health(client):
     response = client.get("/health")
     assert response.json() == {"status": "ok"}
