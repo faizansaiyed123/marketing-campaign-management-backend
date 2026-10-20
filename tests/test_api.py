@@ -257,7 +257,7 @@ def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
 
 def test_authentication_fails_closed_when_shared_limiter_is_unavailable(monkeypatch, client):
     from types import SimpleNamespace
-    from redis.exceptions import RedisConnectionError
+    from redis.exceptions import ConnectionError as RedisConnectionError
     from app.core import rate_limit as rate_limit_module
 
     class UnavailableRedis:
