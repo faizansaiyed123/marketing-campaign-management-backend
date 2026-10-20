@@ -45,8 +45,10 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install -e ".[dev]"
       - run: python -m compileall -q app tests run.py
-      - name: Validate operational scripts
-        run: bash -n scripts/backup_postgres.sh scripts/restore_postgres.sh
+      - name: Validate and test operational scripts
+        run: |
+          bash -n scripts/backup_postgres.sh scripts/restore_postgres.sh tests/test_operations.sh
+          bash tests/test_operations.sh
       - name: Verify PostgreSQL migrations
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/campaigns
