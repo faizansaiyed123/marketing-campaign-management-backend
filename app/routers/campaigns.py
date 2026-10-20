@@ -7,7 +7,7 @@ from ..db import get_db
 from ..dependencies import get_current_user
 from ..models import Audience, Campaign, CampaignEvent, CampaignRun, Delivery
 from ..schemas import CampaignCreate, CampaignReport, CampaignResponse, CampaignUpdate, DeliverySummary
-from ..services.campaigns import deliver_queued_run, queue_campaign
+from ..services.campaigns import queue_campaign
 
 router=APIRouter(prefix="/api/v1/campaigns",tags=["campaigns"])
 
@@ -97,7 +97,7 @@ def execute(campaign_id:str,db:Session=Depends(get_db),user=Depends(get_current_
         run=queue_campaign(db,campaign)
     except ValueError:
         raise HTTPException(409,"Campaign is already queued or sent")
-    run=deliver_queued_run(db,run)
+    # The API persists durable work; the worker owns SMTP delivery.
     return build_report(db,campaign,run)
 
 @router.get("/{campaign_id}/report",response_model=CampaignReport)

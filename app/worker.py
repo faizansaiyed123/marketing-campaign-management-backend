@@ -4,14 +4,20 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from .core.config import get_settings
 from .db import SessionLocal
 from .models import Campaign, CampaignRun
-from .services.campaigns import deliver_queued_run, queue_campaign
+from .services.campaigns import deliver_queued_run, queue_campaign, smtp_is_configured
 
 logger = logging.getLogger(__name__)
 
+
 def process_due_campaigns() -> int:
+    """Queue due campaigns and deliver queued runs when SMTP is configured."""
     processed = 0
+    settings = get_settings()
+    mail_enabled = smtp_is_configured(settings)
+
     with SessionLocal() as db:
         due = db.scalars(
             select(Campaign)
@@ -25,6 +31,7 @@ def process_due_campaigns() -> int:
         for campaign in due:
             try:
                 run = queue_campaign(db, campaign)
+                processed += 1
             except ValueError:
                 db.rollback()
                 continue
@@ -33,24 +40,32 @@ def process_due_campaigns() -> int:
                 logger.exception("Failed to queue scheduled campaign %s", campaign.id)
                 continue
 
-            deliver_queued_run(db, run)
-            processed += 1
+            if mail_enabled:
+                try:
+                    deliver_queued_run(db, run)
+                except Exception:
+                    db.rollback()
+                    logger.exception("Failed to deliver scheduled campaign run %s", run.id)
 
-        queued_runs = db.scalars(
-            select(CampaignRun)
-            .where(CampaignRun.status == "queued")
-            .order_by(CampaignRun.started_at)
-        ).all()
+        # Without SMTP, preserve durable queued work without repeatedly entering
+        # the mail-delivery path every polling interval.
+        if mail_enabled:
+            queued_runs = db.scalars(
+                select(CampaignRun)
+                .where(CampaignRun.status == "queued")
+                .order_by(CampaignRun.started_at)
+            ).all()
 
-        for run in queued_runs:
-            try:
-                deliver_queued_run(db, run)
-                processed += 1
-            except Exception:
-                db.rollback()
-                logger.exception("Failed to process queued campaign run %s", run.id)
+            for run in queued_runs:
+                try:
+                    deliver_queued_run(db, run)
+                    processed += 1
+                except Exception:
+                    db.rollback()
+                    logger.exception("Failed to process queued campaign run %s", run.id)
 
     return processed
+
 
 def main():
     logging.basicConfig(
@@ -63,6 +78,7 @@ def main():
         except Exception:
             logger.exception("Scheduler iteration failed")
         time.sleep(15)
+
 
 if __name__ == "__main__":
     main()

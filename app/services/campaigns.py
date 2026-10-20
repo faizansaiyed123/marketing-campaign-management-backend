@@ -171,9 +171,15 @@ def _mark_all_queued_failed(db: Session, run_id: str, reason: str) -> None:
         delivery.status = "failed"
         delivery.error_message = reason[:500]
 
+def smtp_is_configured(settings=None) -> bool:
+    """Return whether the minimum SMTP settings needed to send mail are present."""
+    settings = settings or get_settings()
+    return bool(settings.smtp_host and settings.smtp_from_email)
+
+
 def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
     settings = get_settings()
-    if not settings.smtp_host or not settings.smtp_from_email:
+    if not smtp_is_configured(settings):
         return run
 
     server = None
