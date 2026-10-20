@@ -1,7 +1,7 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Status — October 20, 2026
-Production-readiness work is committed on main. The current backend code and regression tests passed CI at revision `5dd96f80e4c57ec26ba9bca24bedfe9c1488107d`.
+Production-readiness work is committed on main. The current backend code and regression tests passed CI at revision `9db02d023a2880f3366515aa1249a201cec1869c`.
 - Shared authentication rate limits use atomic Redis rolling windows; missing/unavailable Redis fails authentication closed, and production readiness checks both PostgreSQL and Redis.
 - Cookie-authenticated mutations reject foreign Origin requests and cross-site Fetch Metadata requests; CORS is credentialed and limited to the configured frontend origin.
 - Production settings validate database/JWT/Redis passwords, HTTPS origins, secure __Host- cookie settings, SMTP sender syntax and verified TLS mode.
@@ -17,10 +17,11 @@ Production-readiness work is committed on main. The current backend code and reg
 - run.py accurately describes PostgreSQL + Redis + API + worker.
 
 ## Repositories and CI
+- Current `main` commit: `9db02d023a2880f3366515aa1249a201cec1869c`
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
-- Backend application code verified by CI before this docs update: c9cf66a409bfb7faa07b7832585b73f5f0b78f11
-- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39401297680
+- Backend application code verified by CI before this docs update: 9db02d023a2880f3366515aa1249a201cec1869c
+- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39401632017
 - CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, both production Compose variants including derived tracking URL checks, both Caddyfiles, Docker image build, and non-root API runtime.
 
 ## Delivery and report semantics
