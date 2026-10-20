@@ -173,8 +173,8 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         "public_base_url": "https://api.example.com",
         "database_url": "postgresql+psycopg://campaign_app:db-random-secret-3a7bed038f@db.example.com:5432/campaigns",
         "redis_url": "redis://:4c09f1c8aab8d14e905e1f1f7f03e6c1a55bb8be1f62d540@redis:6379/0",
-        "smtp_host": "smtp.example.com",
-        "smtp_from_email": "sender@example.com",
+        "smtp_host": "smtp.mailgun.org",
+        "smtp_from_email": "sender@mycompany.com",
         "smtp_use_tls": True,
     }
     Settings(**valid)
@@ -183,6 +183,12 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         Settings(**{**valid, "redis_url": None})
     with pytest.raises(ValueError, match="SMTP_HOST and SMTP_FROM_EMAIL are required"):
         Settings(**{**valid, "smtp_host": None})
+    with pytest.raises(ValueError, match="SMTP_HOST must use a real provider hostname"):
+        Settings(**{**valid, "smtp_host": "smtp.example.com"})
+    with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must use a real, verified sender domain"):
+        Settings(**{**valid, "smtp_from_email": "sender@example.com"})
+    with pytest.raises(ValueError, match="SMTP_PASSWORD must be replaced"):
+        Settings(**{**valid, "smtp_username": "api-user", "smtp_password": "change-me-password"})
 
 
 def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):

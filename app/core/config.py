@@ -74,6 +74,31 @@ class Settings(BaseSettings):
 
             if not self.smtp_host or not self.smtp_from_email:
                 raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL are required outside development/test")
+
+            smtp_host = self.smtp_host.strip().lower().rstrip(".")
+            placeholder_suffixes = (".example", ".invalid", ".test", ".localhost")
+            if (
+                smtp_host in {"localhost", "example.com", "example.org", "example.net"}
+                or any(smtp_host.endswith(suffix) for suffix in placeholder_suffixes)
+            ):
+                raise ValueError("SMTP_HOST must use a real provider hostname, not an example placeholder")
+
+            sender = self.smtp_from_email.strip().lower()
+            sender_domain = sender.rsplit("@", 1)[-1] if "@" in sender else ""
+            if (
+                sender_domain in {"example.com", "example.org", "example.net", "localhost"}
+                or any(sender_domain.endswith(suffix) for suffix in placeholder_suffixes)
+            ):
+                raise ValueError("SMTP_FROM_EMAIL must use a real, verified sender domain")
+
+            for label, value in (
+                ("SMTP_USERNAME", self.smtp_username),
+                ("SMTP_PASSWORD", self.smtp_password),
+            ):
+                normalized = (value or "").strip().lower()
+                if normalized.startswith(("replace-", "change-me-", "your-", "example-")):
+                    raise ValueError(f"{label} must be replaced with the email provider credential")
+
             if bool(self.smtp_username) != bool(self.smtp_password):
                 raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
             if not self.smtp_use_tls:
