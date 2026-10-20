@@ -148,6 +148,52 @@ def test_production_security_rejects_default_database_password():
         )
 
 
+
+def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
+    from collections import OrderedDict
+    from types import SimpleNamespace
+    from app.core import rate_limit as rate_limit_module
+
+    monkeypatch.setattr(rate_limit_module, "get_settings", lambda: SimpleNamespace(environment="production"))
+    monkeypatch.setattr(rate_limit_module, "_BUCKETS", OrderedDict())
+
+    for _ in range(10):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": "missing-rate-limit@example.com", "password": "incorrect-password"},
+        )
+        assert response.status_code == 401
+
+    blocked_login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing-rate-limit@example.com", "password": "incorrect-password"},
+    )
+    assert blocked_login.status_code == 429
+    assert int(blocked_login.headers["retry-after"]) >= 1
+    assert blocked_login.headers["cache-control"] == "no-store"
+
+    for index in range(5):
+        response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "name": f"Rate User {index}",
+                "email": f"rate-limit-{index}@example.com",
+                "password": "strong-password-123",
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    blocked_register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "name": "Rate User Blocked",
+            "email": "rate-limit-blocked@example.com",
+            "password": "strong-password-123",
+        },
+    )
+    assert blocked_register.status_code == 429
+    assert int(blocked_register.headers["retry-after"]) >= 1
+
 def test_template_lifecycle_and_owner_isolation(client):
     register(client, "template-owner@example.com")
     created_response = client.post(

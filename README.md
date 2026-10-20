@@ -55,7 +55,7 @@ This starts:
 
 The API container waits for PostgreSQL health before starting and applies Alembic migrations before launching FastAPI. The worker starts after the API health check succeeds.
 
-For local development, Compose binds the database and API ports to loopback only. Do not expose the raw HTTP API port directly to the public internet. In production, route public HTTPS traffic through a TLS-terminating reverse proxy or managed HTTPS load balancer, and keep PostgreSQL private. The API container runs as a non-root user. Configure gateway/reverse-proxy rate limits for login and registration; the application does not currently implement a shared distributed rate limiter.
+For local development, Compose binds the database and API ports to loopback only. Do not expose the raw HTTP API port directly to the public internet. In production, route public HTTPS traffic through a TLS-terminating reverse proxy or managed HTTPS load balancer, and keep PostgreSQL private. The API container runs as a non-root user. Login and registration have process-local IP rate limits (10 login attempts per minute and 5 registrations per hour). These counters reset on process restart and are not shared across replicas; if you run multiple API workers or replicas, add a shared gateway/distributed rate limiter before public exposure. The included Caddyfile is a TLS reverse proxy, not a distributed rate limiter.
 
 The API health endpoint is:
 
