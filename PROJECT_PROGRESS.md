@@ -1,64 +1,63 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Objective and current status
-Prepare the backend for reliable integration with the separate frontend and for production deployment while preserving existing features.
-- Code/configuration review and targeted production hardening have been committed on main.
-- Current backend CI is passing, including PostgreSQL tests, migration parity, Compose validation, image build, and non-root runtime verification.
-- No live deployment has been performed; hosting, public DNS/TLS, production database, secrets, reverse proxy, and optional SMTP still require environment setup.
+Prepare the backend for reliable frontend integration and production deployment.
+- Application hardening, reusable templates, container hardening, rate-limit protection, and optional self-hosted HTTPS deployment configuration are committed on `main`.
+- Latest backend CI passed PostgreSQL-backed API tests, migrations/parity, both Compose configurations, Caddyfile validation, image build, and non-root runtime verification.
+- No live deployment has been performed. A real server, DNS records, production secrets, and optional SMTP credentials remain external setup requirements.
 
 ## Repository and latest verified revision
 - Repository: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Target branch: `main`
-- Current inspected main SHA at this checkpoint: `c437bb7d91a0abb373f0e61f1442e61a03f55f1a`
-- Recent relevant commits:
-  - `7573e4fa1972` — run the API image unprivileged and harden response headers.
-  - `dc8698a6d532` — test the container's non-root user.
-  - `1e02bc25e9de` — prevent caching tracking responses and improve shutdown.
-  - `cb2469802abf` — reject default production database credentials.
-  - `c437bb7d91a0` — add owner-scoped reusable campaign templates.
-- GitHub access was verified earlier with push/admin permissions. Local cloning was unavailable because github.com did not resolve from the local execution environment; updates were performed through GitHub APIs.
+- Latest application/security commit at this progress checkpoint: `9e08b9ef9a11f4ed22041dd6870c5a0ae7e19bd8` — rate limit authentication attempts.
+- Previous deployment configuration commit: `75eed90918332fe88e4ae8bd8566da18ba288fee` — add Caddy + production Compose overlay.
+- Previous core API/template revision: `c437bb7d91a0abb373f0e61f1442e61a03f55f1a`.
+- Local cloning was unavailable because github.com did not resolve from the local execution environment. Commits were made via the connected GitHub integration; no local uncommitted changes are pending.
 
-## Implemented features and architecture
+## Application features and architecture
 - FastAPI + SQLAlchemy + PostgreSQL + Alembic.
-- HttpOnly session cookie authentication; Argon2 password hashing; JWT-backed session identity.
-- Owner-scoped audience/contact management, subscribe/unsubscribe state, campaign lifecycle, scheduled execution, durable delivery records, tracking/open/click/unsubscribe, dashboard and analytics.
-- Reusable owner-scoped campaign templates with list/create/update/delete APIs at `/api/v1/templates`, backed by migration `0003_campaign_templates`.
-- The scheduler/worker runs separately and checks for due/queued campaign work every 15 seconds. SMTP is optional; without SMTP, delivery remains queued instead of being represented as sent.
-- Production configuration rejects common JWT placeholder prefixes, insecure cookie settings, non-HTTPS production origins/base URLs, non-`__Host-` cookie names, and common/default/missing PostgreSQL password values outside development/test.
-- Logout expires the session cookie with compatible HttpOnly/Secure/SameSite/Path attributes.
-- The Docker image runs as UID 10001, starts Uvicorn with exec signal handling after migrations, and includes cache/security headers. API and PostgreSQL ports in the supplied Compose stack bind to loopback for local safety rather than direct public exposure.
+- Argon2 password hashing and JWT-backed HttpOnly session cookie; secure cookie deletion; production checks for common JWT/database credential placeholders, HTTPS origins, Secure cookies, and `__Host-` cookie names.
+- Owner-scoped audiences, contacts and subscription preferences; campaign create/edit/schedule/execute/report; durable delivery state; click/open/unsubscribe tracking; dashboard and analytics.
+- Owner-scoped reusable email templates at `/api/v1/templates`, backed by migration `0003_campaign_templates`.
+- Database-backed scheduled/queued worker runs separately and polls every 15 seconds. SMTP is optional; without it, campaign deliveries remain queued and are not falsely marked sent.
+- Basic process-local authentication abuse protection:
+  - Login: 10 requests per source IP per rolling minute.
+  - Registration: 5 requests per source IP per rolling hour.
+  - Disabled in development/test to keep integration tests and local development predictable.
+  - Counters are in memory and reset on restart; they are not shared across API processes/replicas. If horizontally scaling, run multiple workers, or placing the service behind a different gateway, add a shared distributed rate limiter at the gateway/application layer.
 
-## Frontend contract check
-The current frontend references these route families, which are present on backend main:
-- Auth: register, login, current session, logout.
-- Dashboard summary.
-- Audience/contact list, create, subscribe/unsubscribe, and removal.
-- Campaign list/create/update/execute/report.
-- Analytics overview.
-- Saved templates: list/create/update/delete.
-Playwright integration tests exercise the end-to-end workflow and saved-template behavior. Backend unit/API tests cover template ownership/isolation and required-field validation.
+## Production container and reverse proxy
+- Backend image uses UID 10001, runs Uvicorn with proper signal handoff after applying Alembic migrations, and adds response security/cache headers.
+- Base Compose binds the API and PostgreSQL host ports to loopback; it does not expose them directly to the internet.
+- Optional `docker-compose.production.yml` adds Caddy for TLS termination and domain-based routing, while persisting certificate/configuration data.
+- Backend API joins the external Docker network `campaign_proxy` as `campaign-api`; frontend repository's production overlay joins the same network as `campaign-frontend`.
+- Caddy serves `FRONTEND_DOMAIN` and `API_DOMAIN`. DNS records must point at the server, and public TCP ports 80/443 must be reachable for automatic certificate provisioning.
+- The built-in Caddyfile is a TLS reverse proxy, not a distributed rate limiter; the process-local authentication limits described above are not a substitute for shared limiting on multi-replica deployments.
 
-## Branch comparison
-Branches inspected: `main`, `development`, and `chore/startup-docker-support`. Recursive tree/blob checks showed both non-main branches behind main with zero commits ahead. Main includes a backend-only `run.py`; no branch was blindly merged.
+## Frontend contract
+The frontend's routes have been matched against backend route families for auth, audiences/contacts, campaigns, dashboard, analytics, and templates. Playwright exercises the end-to-end workflow and saved-template application; backend tests cover template owner isolation and required-field validation.
+
+## Branch review
+Branches previously inspected: `main`, `development`, and `chore/startup-docker-support`. Recursive tree/blob comparisons found both non-main branches behind main with zero commits ahead. No branch was blindly merged.
 
 ## CI and test verification
-- Latest checked backend workflow for current main SHA `c437bb7d91a0` completed successfully: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39361898507
-- This CI run includes Python compile checks, PostgreSQL migration upgrade and model/migration parity, API tests, Docker Compose validation, API image build, and the explicit check that the image runs as UID 10001.
-- The previous database-password guard and regression-test run also passed: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39387916183
-- The corresponding frontend CI—including the Playwright suite against backend main—passed: https://github.com/faizansaiyed123/marketing-campaign-management-frontend/actions/runs/39362965002
-- No local tests/build are claimed because no local clone was available.
+- Latest backend run for rate-limit commit `9e08b9ef9a11` passed: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39364698605
+- The successful run includes Python compilation, PostgreSQL migrations and migration/model parity, the API test suite (including auth rate-limit regression checks), normal and production Compose validation, Caddyfile validation, API image build, and the check that the image runs as UID 10001.
+- The production overlay commit `75eed9091833` also passed its CI run: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39364404197
+- The frontend production overlay commit `9b126f0934cd` passed build, production container smoke test, and the full Playwright integration suite: https://github.com/faizansaiyed123/marketing-campaign-management-frontend/actions/runs/39364319938
+- No local test/build run is claimed because a usable clone was unavailable.
 
 ## Deployment prerequisites and known limits
-- No production URL, persistent cloud database, hosting project, DNS/TLS, or running service has been created or verified.
-- Production environment must set `ENVIRONMENT=production`, a unique random `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `FRONTEND_ORIGIN`, HTTPS `PUBLIC_BASE_URL`, and a strong unique database password.
-- For Compose deployments, configure `POSTGRES_PASSWORD` and matching frontend/API origins and URLs, plus optional SMTP variables. Keep PostgreSQL private and expose HTTP only through a TLS-terminating reverse proxy or managed HTTPS load balancer.
-- For Python-only deployment, set `DATABASE_URL` and apply Alembic migrations before serving traffic.
-- The API doesn't currently implement a shared distributed rate limiter. Configure login/registration rate limits at the production reverse proxy/gateway before public exposure.
-- Because the session cookie is `SameSite=Strict`, frontend and API should use HTTPS custom domains under the same registrable domain.
-- Optional SMTP credentials and sender identity must be configured and verified to send real campaigns. No secrets are stored in this file.
+- No production URL, VPS, DNS/TLS setup, persistent cloud database, or running service has been provisioned/verified.
+- For the one-host Docker approach, create the external `campaign_proxy` network; set `ENVIRONMENT=production`, `POSTGRES_USER`, `POSTGRES_DB`, strong random `POSTGRES_PASSWORD`, strong random `JWT_SECRET_KEY`, `FRONTEND_DOMAIN`, `API_DOMAIN`, exact HTTPS `FRONTEND_ORIGIN`, HTTPS `PUBLIC_BASE_URL`, `COOKIE_SECURE=true`, and `COOKIE_NAME=__Host-campaign_session`.
+- Start backend with `docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d`, then frontend with the corresponding overlay and `VITE_API_URL=https://<API_DOMAIN>`.
+- Keep PostgreSQL private. Open required public web ports 80/443 for Caddy; maintain off-host database backups.
+- Optional SMTP host/credentials/sender identity must be configured and real delivery tested before claiming email delivery works in production.
+- For multiple API replicas/workers, configure a shared distributed limiter; the included limiter is intentionally process-local.
+- No secrets are stored here.
 
 ## Next action
-1. Select/configure a hosting environment with persistent PostgreSQL, TLS termination, and public frontend/API custom domains.
-2. Deploy API + worker + frontend with production-only secrets; verify health and cookie/CORS behavior.
-3. Test registration/login/logout, owner isolation (including templates), campaign scheduling/execution/tracking, and SMTP delivery if enabled.
-4. Record production URLs, smoke-test results, deployment logs, and any remaining limitations after a real deployment is performed.
+1. Finish setup on a real host and configure actual DNS/TLS/secrets.
+2. Deploy API + worker + PostgreSQL/Caddy, then frontend.
+3. Run production smoke tests for health, auth, template ownership, audiences, campaign lifecycle, tracking, and SMTP if enabled.
+4. Record deployed URLs, tested responses, logs, and any remaining limitations.
