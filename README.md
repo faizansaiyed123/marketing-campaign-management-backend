@@ -145,6 +145,26 @@ docker compose down -v
 docker compose up --build
 ```
 
+## PostgreSQL backups and recovery
+
+Create a custom-format PostgreSQL dump, verify it with `pg_restore --list`, and keep it outside the Git repository:
+
+```bash
+bash scripts/backup_postgres.sh
+```
+
+The default local location is `~/campaign-management-backups`; set `BACKUP_DIR` and `BACKUP_RETENTION_DAYS` to customize storage and retention. The dump file is restricted to owner-only permissions. A local-only backup does not protect against server loss.
+
+For an off-host copy, configure rclone on the server and set `BACKUP_RCLONE_REMOTE`, for example `encrypted-backups:campaign-management`. Use an rclone **crypt** remote or another client-side encrypted destination for contact data. The backup script reports an error if a configured off-host copy fails.
+
+Recovery is deliberately performed into a **separate database** to avoid overwriting the live campaign database. Validate the archive and restore it to a new name:
+
+```bash
+RESTORE_DATABASE=campaigns_restore_20261020 bash scripts/restore_postgres.sh ~/campaign-management-backups/campaigns-YYYYMMDDTHHMMSSZ.dump
+```
+
+After checking the restored database, switch `POSTGRES_DB` in the server's untracked `.env` to the restore database name and recreate the PostgreSQL/API/worker containers using the same base/production Compose files used for deployment. The restored database must be compatible with the running application's Alembic revision. Test this procedure periodically; no backup is proven recoverable until an actual restore has succeeded.
+
 ## Single-host production deployment (Caddy + HTTPS)
 
 The optional `docker-compose.production.yml` overlay adds Caddy as the public TLS-terminating reverse proxy. It serves the frontend at `FRONTEND_DOMAIN` and routes the API at `API_DOMAIN`. Caddy obtains and renews certificates automatically when both DNS records point to this server and inbound ports 80 and 443 are reachable.

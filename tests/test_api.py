@@ -63,7 +63,7 @@ def test_postgres_backup_script_writes_private_validated_dump(tmp_path):
     assert result.returncode == 0, result.stderr + result.stdout
     backups = list((tmp_path / "backups").glob("campaigns-*.dump"))
     assert len(backups) == 1
-    assert backups[0].read_text() == "mock-custom-format-archive\\n"
+    assert backups[0].read_text() == "mock-custom-format-archive\n"
     assert os.stat(backups[0]).st_mode & 0o777 == 0o600
     calls = call_log.read_text()
     assert "pg_dump" in calls
@@ -79,7 +79,7 @@ def test_postgres_restore_requires_a_separate_database(tmp_path):
     env, call_log = _write_mock_docker(tmp_path)
     env["RESTORE_DATABASE"] = "campaigns"
     backup_file = tmp_path / "campaigns-test.dump"
-    backup_file.write_text("mock-custom-format-archive\\n")
+    backup_file.write_text("mock-custom-format-archive\n")
     result = subprocess.run(
         ["bash", str(root / "scripts/restore_postgres.sh"), str(backup_file)],
         env=env,
@@ -100,7 +100,7 @@ def test_postgres_restore_creates_and_populates_a_separate_database(tmp_path):
     env, call_log = _write_mock_docker(tmp_path)
     env["RESTORE_DATABASE"] = "campaigns_restore_test"
     backup_file = tmp_path / "campaigns-test.dump"
-    backup_file.write_text("mock-custom-format-archive\\n")
+    backup_file.write_text("mock-custom-format-archive\n")
     result = subprocess.run(
         ["bash", str(root / "scripts/restore_postgres.sh"), str(backup_file)],
         env=env,
@@ -115,7 +115,7 @@ def test_postgres_restore_creates_and_populates_a_separate_database(tmp_path):
     assert "campaigns_restore_test" in calls
     assert "pg_restore --no-owner --no-acl --exit-on-error" in calls
     assert "pg_restore --clean" not in calls
-    assert "Restored the archive" not in result.stdout
+    assert "Restore completed into separate database" in result.stdout
     assert "live application still uses campaigns" in result.stdout
 
 
