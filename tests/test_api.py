@@ -403,6 +403,12 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         Settings(**{**valid, "smtp_host": None})
     with pytest.raises(ValueError, match="SMTP_HOST must use a real provider hostname"):
         Settings(**{**valid, "smtp_host": "smtp.example.com"})
+    with pytest.raises(ValueError, match="DATABASE_URL must use a unique database password of at least 24 characters"):
+        Settings(**{**valid, "database_url": "postgresql+psycopg://campaign_app:short123@db.example.com:5432/campaigns"})
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL must be an HTTPS origin"):
+        Settings(**{**valid, "public_base_url": "https://api.example.com/api"})
+    with pytest.raises(ValueError, match="FRONTEND_ORIGIN must be an HTTPS origin"):
+        Settings(**{**valid, "frontend_origin": "https://app.example.com/app"})
     with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must use a real, verified sender domain"):
         Settings(**{**valid, "smtp_from_email": "sender@example.com"})
     with pytest.raises(ValueError, match="SMTP_PASSWORD must be replaced"):

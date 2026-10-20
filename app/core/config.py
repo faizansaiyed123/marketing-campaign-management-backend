@@ -37,8 +37,29 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be at least 32 characters outside development/test")
             if not self.cookie_secure:
                 raise ValueError("COOKIE_SECURE must be true outside development/test")
-            if not self.public_base_url.startswith("https://"):
-                raise ValueError("PUBLIC_BASE_URL must use HTTPS outside development/test")
+            public_url = urlsplit(self.public_base_url)
+            if (
+                public_url.scheme != "https"
+                or not public_url.hostname
+                or public_url.username
+                or public_url.password
+                or public_url.path not in {"", "/"}
+                or public_url.query
+                or public_url.fragment
+            ):
+                raise ValueError("PUBLIC_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment")
+
+            frontend_url = urlsplit(self.frontend_origin)
+            if (
+                frontend_url.scheme != "https"
+                or not frontend_url.hostname
+                or frontend_url.username
+                or frontend_url.password
+                or frontend_url.path
+                or frontend_url.query
+                or frontend_url.fragment
+            ):
+                raise ValueError("FRONTEND_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment")
             if not self.cookie_name.startswith("__Host-"):
                 raise ValueError("COOKIE_NAME must use the __Host- prefix outside development/test")
             if self.frontend_origin and not self.frontend_origin.startswith("https://"):
@@ -46,11 +67,12 @@ class Settings(BaseSettings):
             database_password = make_url(self.database_url).password
             normalized_password = (database_password or "").strip().lower()
             if (
-                not normalized_password
+                len(database_password or "") < 24
+                or len(set(database_password or "")) < 8
                 or normalized_password in {"postgres", "password", "changeme"}
                 or normalized_password.startswith(("replace-", "change-me-", "your-secret", "example-secret"))
             ):
-                raise ValueError("DATABASE_URL must use a unique database password outside development/test")
+                raise ValueError("DATABASE_URL must use a unique database password of at least 24 characters outside development/test")
 
             try:
                 redis_parts = urlsplit(self.redis_url or "")
