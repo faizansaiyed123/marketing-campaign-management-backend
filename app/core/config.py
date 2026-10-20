@@ -80,6 +80,9 @@ class Settings(BaseSettings):
             example_domains = {"example.com", "example.org", "example.net"}
             if (
                 smtp_host == "localhost"
+                or smtp_host.startswith("<")
+                or smtp_host.endswith(">")
+                or any(character.isspace() for character in smtp_host)
                 or smtp_host in example_domains
                 or any(smtp_host.endswith("." + domain) for domain in example_domains)
                 or any(smtp_host.endswith(suffix) for suffix in placeholder_suffixes)
@@ -87,7 +90,14 @@ class Settings(BaseSettings):
                 raise ValueError("SMTP_HOST must use a real provider hostname, not an example placeholder")
 
             sender = self.smtp_from_email.strip().lower()
-            sender_domain = sender.rsplit("@", 1)[-1] if "@" in sender else ""
+            if (
+                sender.count("@") != 1
+                or any(character.isspace() for character in sender)
+                or sender.startswith("<")
+                or sender.endswith(">")
+            ):
+                raise ValueError("SMTP_FROM_EMAIL must be a valid mailbox address")
+            sender_domain = sender.rsplit("@", 1)[-1]
             if (
                 sender_domain in {"example.com", "example.org", "example.net", "localhost"}
                 or any(sender_domain.endswith(suffix) for suffix in placeholder_suffixes)
@@ -99,7 +109,10 @@ class Settings(BaseSettings):
                 ("SMTP_PASSWORD", self.smtp_password),
             ):
                 normalized = (value or "").strip().lower()
-                if normalized.startswith(("replace-", "change-me-", "your-", "example-")):
+                if (
+                    normalized.startswith(("<", "replace-", "change-me-", "your-", "example-"))
+                    or normalized in {"username", "password", "changeme", "your username", "your password"}
+                ):
                     raise ValueError(f"{label} must be replaced with the email provider credential")
 
             if bool(self.smtp_username) != bool(self.smtp_password):

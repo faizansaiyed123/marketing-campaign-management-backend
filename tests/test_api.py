@@ -189,6 +189,10 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         Settings(**{**valid, "smtp_from_email": "sender@example.com"})
     with pytest.raises(ValueError, match="SMTP_PASSWORD must be replaced"):
         Settings(**{**valid, "smtp_username": "api-user", "smtp_password": "change-me-password"})
+    with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must be a valid mailbox address"):
+        Settings(**{**valid, "smtp_from_email": "<verified sender address>"})
+    with pytest.raises(ValueError, match="SMTP_USERNAME must be replaced"):
+        Settings(**{**valid, "smtp_username": "<provider username>", "smtp_password": "<provider password>"})
 
 
 def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
