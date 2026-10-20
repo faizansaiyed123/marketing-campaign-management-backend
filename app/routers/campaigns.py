@@ -119,7 +119,9 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
 
 @router.post("/{campaign_id}/execute",response_model=CampaignReport,status_code=202)
 def execute(campaign_id:str,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    campaign=get_campaign(db,campaign_id,user)
+    # Serialize execute against edits so a single committed campaign version
+    # determines both its recipient audience and the content sent by the worker.
+    campaign=get_campaign(db,campaign_id,user,for_update=True)
     if campaign.status in {"sent","queued"}:
         raise HTTPException(409,"Campaign is already queued or sent")
     try:

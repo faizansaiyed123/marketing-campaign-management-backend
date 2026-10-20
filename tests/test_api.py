@@ -567,6 +567,33 @@ def test_authentication_fails_closed_when_shared_limiter_is_unavailable(monkeypa
     assert response.headers["retry-after"] == "5"
 
 
+def test_execute_locks_campaign_before_queueing(client, monkeypatch):
+    register(client, "execute-lock@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Execute lock"}).json()
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Serialize execution",
+            "audience_id": audience["id"],
+            "subject": "Consistent version",
+            "body_html": "<p>Lock test</p>",
+        },
+    ).json()
+
+    import app.routers.campaigns as campaign_router
+    original_get_campaign = campaign_router.get_campaign
+    observed = []
+
+    def record_lock(db, campaign_id, user, *, for_update=False):
+        observed.append(for_update)
+        return original_get_campaign(db, campaign_id, user, for_update=for_update)
+
+    monkeypatch.setattr(campaign_router, "get_campaign", record_lock)
+    response = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert response.status_code == 202, response.text
+    assert observed == [True]
+
+
 def test_template_lifecycle_and_owner_isolation(client):
     register(client, "template-owner@example.com")
     created_response = client.post(
