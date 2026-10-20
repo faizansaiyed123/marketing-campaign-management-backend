@@ -97,6 +97,8 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
     campaign=get_campaign(db,campaign_id,user,for_update=True)
     if campaign.status in {"queued","sent"}:
         raise HTTPException(409,"Queued or sent campaigns cannot be edited")
+    previous_status = campaign.status
+    previous_audience_id = campaign.audience_id
     data=payload.model_dump(exclude_unset=True)
     if "audience_id" in data:
         audience=db.scalar(select(Audience.id).where(Audience.id==data["audience_id"],Audience.owner_id==user.id))
@@ -105,9 +107,11 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
         setattr(campaign,key,value)
     if campaign.scheduled_at and campaign.scheduled_at>datetime.now(timezone.utc):
         campaign.status="scheduled"
-    elif campaign.status not in {"failed", "partial"}:
-        # Preserve the failed/partial marker after edits so execute retries only
-        # failed deliveries instead of resending to successful recipients.
+    elif previous_status in {"failed", "partial"} and campaign.audience_id == previous_audience_id:
+        # Preserve retry semantics only while the audience remains the same.
+        # Changing the audience starts a new draft instead of retrying old contacts.
+        campaign.status=previous_status
+    else:
         campaign.status="draft"
     db.commit()
     db.refresh(campaign)

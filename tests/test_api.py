@@ -1172,6 +1172,45 @@ def test_scheduler_will_not_claim_a_campaign_changed_back_to_draft(client):
         assert db.query(Campaign).filter_by(id=campaign.id).count() == 1
 
 
+def test_editing_failed_campaign_with_new_audience_starts_a_draft(client):
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Campaign
+
+    register(client, "failed-new-audience@example.com")
+    old_audience = client.post("/api/v1/audiences", json={"name": "Previous audience"}).json()
+    new_audience = client.post("/api/v1/audiences", json={"name": "Replacement audience"}).json()
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Changed recipients",
+            "audience_id": old_audience["id"],
+            "subject": "Retry",
+            "body_html": "<p>Hello</p>",
+        },
+    ).json()
+
+    with Session(engine) as db:
+        row = db.get(Campaign, campaign["id"])
+        row.status = "partial"
+        db.commit()
+
+    same_audience_edit = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"subject": "Corrected subject"},
+    )
+    assert same_audience_edit.status_code == 200
+    assert same_audience_edit.json()["status"] == "partial"
+
+    new_audience_edit = client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"audience_id": new_audience["id"]},
+    )
+    assert new_audience_edit.status_code == 200
+    assert new_audience_edit.json()["status"] == "draft"
+    assert new_audience_edit.json()["audience_id"] == new_audience["id"]
+
+
 def test_scheduled_campaign_is_queued_by_worker(client, monkeypatch):
     register(client,"worker@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Worker"}).json()
