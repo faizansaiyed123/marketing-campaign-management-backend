@@ -1,7 +1,7 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Status — October 20, 2026
-Production-readiness work is committed on main. The current application change and tests have passed CI.
+Production-readiness work is committed on main. The current backend code and regression tests passed CI at revision `5dd96f80e4c57ec26ba9bca24bedfe9c1488107d`.
 - Shared authentication rate limits use atomic Redis rolling windows; missing/unavailable Redis fails authentication closed, and production readiness checks both PostgreSQL and Redis.
 - Cookie-authenticated mutations reject foreign Origin requests and cross-site Fetch Metadata requests; CORS is credentialed and limited to the configured frontend origin.
 - Production settings validate database/JWT/Redis passwords, HTTPS origins, secure __Host- cookie settings, SMTP sender syntax and verified TLS mode.
@@ -20,8 +20,8 @@ Production-readiness work is committed on main. The current application change a
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
 - Backend application code verified by CI before this docs update: c9cf66a409bfb7faa07b7832585b73f5f0b78f11
-- Backend CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39388563173
-- CI covers Python compilation, shell script syntax, PostgreSQL migrations and model parity, API tests against PostgreSQL, actual Redis rate-limit integration, full-stack/API-only Compose validation, Caddy validation, Docker image build, and non-root API runtime.
+- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39399275908
+- CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, full-stack/API-only Compose validation, both Caddyfiles, Docker image build, and non-root API runtime.
 
 ## Delivery and report semantics
 - Each execution creates a durable run and one delivery row per subscribed recipient captured during queueing.
@@ -42,7 +42,7 @@ Production-readiness work is committed on main. The current application change a
 ## Backups and recovery
 - scripts/backup_postgres.sh creates/verifies custom-format dumps with owner-only file mode, retention, and optional encrypted off-host storage through rclone.
 - scripts/restore_postgres.sh validates and restores into a separate database, and refuses to overwrite the configured live database.
-- CI checks script syntax and mocked safety behavior. A backup isn't proven recoverable until a real production archive has been successfully restored.
+- CI runs `tests/test_operations.sh` with a fake Docker executable to verify successful backup creation/validation and restrictive permissions, empty-dump rejection, refusal to restore over the configured live database, restore to a separate target, and handling a failed restore. This validates script control flow; a real production archive still must be restored in a controlled environment to prove recoverability.
 
 ## Branch review
 Previously compared main, development and chore/startup-docker-support recursively. At that checkpoint both non-main branches were behind main with zero commits ahead. No branches were merged wholesale.
