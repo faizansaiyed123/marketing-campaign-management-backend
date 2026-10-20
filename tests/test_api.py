@@ -1072,6 +1072,7 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
     assert first_report["summary"]["sent"]==1
     assert first_report["summary"]["failed"]==1
     assert first_report["latest_run_status"]=="partial"
+    assert first_report["summary"]["total"] == 2
 
     state["attempt"]=1
     second_queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
@@ -1081,6 +1082,8 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
     assert second_report["summary"]["sent"]==2
     assert second_report["summary"]["failed"]==1
     assert second_report["latest_run_status"]=="sent"
+    assert second_report["summary"]["total"] == 3
+    assert second_report["summary"]["queued"] == 0
     assert sent.count("first@example.com")==1
     assert sent.count("second@example.com")==2
 

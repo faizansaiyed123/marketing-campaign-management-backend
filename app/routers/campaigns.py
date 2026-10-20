@@ -20,30 +20,45 @@ def response(c):
     return CampaignResponse.model_validate(c).model_copy(update={"audience_name":c.audience.name})
 
 def build_report(db,c,run=None):
-    latest=run or db.scalar(select(CampaignRun).where(CampaignRun.campaign_id==c.id).order_by(CampaignRun.started_at.desc()))
-    deliveries=db.scalars(select(Delivery).join(CampaignRun).where(CampaignRun.campaign_id==c.id)).all()
-    counts={"open":0,"click":0}
-    if deliveries:
-        rows=db.execute(
-            select(CampaignEvent.event_type,func.count(func.distinct(CampaignEvent.delivery_id)))
-            .where(
-                CampaignEvent.delivery_id.in_([d.id for d in deliveries]),
-                CampaignEvent.event_type.in_(("open","click")),
-            )
-            .group_by(CampaignEvent.event_type)
-        ).all()
-        counts.update(dict(rows))
+    latest=run or db.scalar(
+        select(CampaignRun)
+        .where(CampaignRun.campaign_id==c.id)
+        .order_by(CampaignRun.started_at.desc())
+    )
+
+    # Aggregate in PostgreSQL instead of loading every delivery into Python.
+    # This keeps campaign-wide reporting efficient for large audiences.
+    state_rows=db.execute(
+        select(Delivery.status,func.count(Delivery.id))
+        .join(CampaignRun,Delivery.run_id==CampaignRun.id)
+        .where(CampaignRun.campaign_id==c.id)
+        .group_by(Delivery.status)
+    ).all()
+    state_counts=dict(state_rows)
+
+    event_rows=db.execute(
+        select(CampaignEvent.event_type,func.count(func.distinct(CampaignEvent.delivery_id)))
+        .join(Delivery,CampaignEvent.delivery_id==Delivery.id)
+        .join(CampaignRun,Delivery.run_id==CampaignRun.id)
+        .where(
+            CampaignRun.campaign_id==c.id,
+            CampaignEvent.event_type.in_(("open","click")),
+        )
+        .group_by(CampaignEvent.event_type)
+    ).all()
+    event_counts=dict(event_rows)
+
     return CampaignReport(
         campaign=response(c),
         latest_run_status=latest.status if latest else None,
         summary=DeliverySummary(
-            total=len(deliveries),
-            queued=sum(d.status=="queued" for d in deliveries),
-            sent=sum(d.status=="sent" for d in deliveries),
-            failed=sum(d.status=="failed" for d in deliveries),
-            skipped=sum(d.status=="skipped" for d in deliveries),
-            opened=counts["open"],
-            clicked=counts["click"],
+            total=sum(state_counts.values()),
+            queued=state_counts.get("queued",0),
+            sent=state_counts.get("sent",0),
+            failed=state_counts.get("failed",0),
+            skipped=state_counts.get("skipped",0),
+            opened=event_counts.get("open",0),
+            clicked=event_counts.get("click",0),
         ),
     )
 
