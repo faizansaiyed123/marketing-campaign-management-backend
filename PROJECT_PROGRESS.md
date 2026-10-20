@@ -1,7 +1,7 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Status — October 20, 2026
-Production-readiness work is committed on main. The current backend code and regression tests passed CI at revision `9db02d023a2880f3366515aa1249a201cec1869c`.
+Production-readiness work is committed on main. The latest migration-ID fix passed CI at revision `39d4ccdf69440a1b65aee9763010bde6529cc895` (https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404581186).
 - Shared authentication rate limits use atomic Redis rolling windows; missing/unavailable Redis fails authentication closed, and production readiness checks both PostgreSQL and Redis.
 - Cookie-authenticated mutations reject foreign Origin requests and cross-site Fetch Metadata requests; CORS is credentialed and limited to the configured frontend origin.
 - Production settings validate database/JWT/Redis passwords, HTTPS origins, secure __Host- cookie settings, SMTP sender syntax and verified TLS mode.
@@ -12,16 +12,18 @@ Production-readiness work is committed on main. The current backend code and reg
 - Campaign reports aggregate counts in PostgreSQL rather than loading all delivery rows into Python. Totals are cumulative across attempts/retries; latest_run_status describes the newest run.
 - Supported merge fields: {{first_name}}, {{last_name}}, {{full_name}}, and {{email}}. HTML values are escaped, subject values are sanitized, and both plain-text and HTML messages preserve tracked links/unsubscribe details.
 - SMTP recipient refusal is recorded as failed; a contact unsubscribed before send is skipped.
+- Campaign runs snapshot subject and HTML at queue time so later campaign edits cannot change the content of already queued deliveries.
+- Migration revision identifiers stay within PostgreSQL Alembic's 32-character version column limit; this was verified by a clean PostgreSQL migration run.
 - Click tracking only redirects to destinations present in the personalized campaign body.
 - PostgreSQL backup/restore scripts validate archives, protect local permissions, support optional off-host rclone copies, and restore into a new database without overwriting live data.
 - run.py accurately describes PostgreSQL + Redis + API + worker.
 
 ## Repositories and CI
-- Current `main` commit: `9db02d023a2880f3366515aa1249a201cec1869c`
+- Current `main` commit before this progress-only update: `39d4ccdf69440a1b65aee9763010bde6529cc895`
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
-- Backend application code verified by CI before this docs update: 9db02d023a2880f3366515aa1249a201cec1869c
-- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39401632017
+- Backend application code verified by CI: 39d4ccdf69440a1b65aee9763010bde6529cc895
+- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39404581186
 - CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, both production Compose variants including derived tracking URL checks, both Caddyfiles, Docker image build, and non-root API runtime.
 
 ## Delivery and report semantics
