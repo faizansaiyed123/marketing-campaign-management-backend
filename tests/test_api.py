@@ -457,6 +457,10 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         Settings(**{**valid, "smtp_username": "api-user", "smtp_password": "change-me-password"})
     with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must be a valid mailbox address"):
         Settings(**{**valid, "smtp_from_email": "<verified sender address>"})
+    with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must be a valid mailbox address"):
+        Settings(**{**valid, "smtp_from_email": "sender@"})
+    with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must be a valid mailbox address"):
+        Settings(**{**valid, "smtp_from_email": "@mycompany.com"})
     with pytest.raises(ValueError, match="SMTP_USERNAME must be replaced"):
         Settings(**{**valid, "smtp_username": "<provider username>", "smtp_password": "<provider password>"})
     with pytest.raises(ValueError, match="Exactly one of SMTP_USE_TLS or SMTP_USE_SSL"):

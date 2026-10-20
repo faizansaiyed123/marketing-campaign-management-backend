@@ -3,6 +3,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy.engine import make_url
 
 
@@ -112,15 +113,15 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("SMTP_HOST must use a real provider hostname, not an example placeholder")
 
-            sender = self.smtp_from_email.strip().lower()
-            if (
-                sender.count("@") != 1
-                or any(character.isspace() for character in sender)
-                or sender.startswith("<")
-                or sender.endswith(">")
-            ):
-                raise ValueError("SMTP_FROM_EMAIL must be a valid mailbox address")
-            sender_domain = sender.rsplit("@", 1)[-1]
+            try:
+                validated_sender = validate_email(
+                    self.smtp_from_email.strip(),
+                    check_deliverability=False,
+                )
+            except EmailNotValidError as exc:
+                raise ValueError("SMTP_FROM_EMAIL must be a valid mailbox address") from exc
+
+            sender_domain = validated_sender.domain.lower()
             if (
                 sender_domain in {"example.com", "example.org", "example.net", "localhost"}
                 or any(sender_domain.endswith(suffix) for suffix in placeholder_suffixes)
