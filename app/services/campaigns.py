@@ -266,9 +266,17 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                 )
 
                 try:
-                    server.send_message(message)
-                    delivery.status = "sent"
-                    delivery.sent_at = datetime.now(timezone.utc)
+                    refused_recipients = server.send_message(message)
+                    if refused_recipients:
+                        refusal_details = "; ".join(
+                            f"{recipient}: {details!r}"
+                            for recipient, details in refused_recipients.items()
+                        )
+                        delivery.status = "failed"
+                        delivery.error_message = ("SMTP refused recipient: " + refusal_details)[:500]
+                    else:
+                        delivery.status = "sent"
+                        delivery.sent_at = datetime.now(timezone.utc)
                 except Exception as exc:
                     delivery.status = "failed"
                     delivery.error_message = str(exc)[:500]

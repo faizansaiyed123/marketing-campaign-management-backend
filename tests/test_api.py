@@ -398,6 +398,66 @@ def test_blank_names_are_rejected(client):
 
 
 
+
+
+def test_smtp_recipient_refusal_is_recorded_as_failed(client, monkeypatch):
+    register(client, "smtp-refused@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "SMTP Refusal"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "rejected@example.com", "first_name": "Rejected"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Recipient refusal",
+            "audience_id": audience["id"],
+            "subject": "A message",
+            "body_html": "<p>Test delivery</p>",
+        },
+    ).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Delivery
+
+    class RefusingSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message):
+            return {message["To"]: (550, b"mailbox unavailable")}
+        def quit(self): pass
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.example",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=True,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "smtplib", SimpleNamespace(SMTP=RefusingSMTP))
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+
+    queued = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+
+    report = client.get(f"/api/v1/campaigns/{campaign['id']}/report").json()
+    assert report["latest_run_status"] == "failed"
+    assert report["summary"]["failed"] == 1
+    assert report["summary"]["sent"] == 0
+    with Session(engine) as db:
+        delivery = db.scalar(select(Delivery))
+        assert delivery.status == "failed"
+        assert "550" in delivery.error_message
+
+
 def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, monkeypatch):
     register(client, "personalization@example.com")
     audience = client.post("/api/v1/audiences", json={"name": "Personalization"}).json()
