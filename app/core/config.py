@@ -1,3 +1,4 @@
+import ipaddress
 from functools import lru_cache
 from urllib.parse import urlsplit
 
@@ -5,6 +6,44 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from email_validator import EmailNotValidError, validate_email
 from sqlalchemy.engine import make_url
+
+
+def _validate_production_https_origin(value: str, setting_name: str) -> None:
+    try:
+        parsed = urlsplit(value)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{setting_name} must be a valid HTTPS origin") from exc
+
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(f"{setting_name} must be an HTTPS origin without credentials, path, query, or fragment")
+
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        raise ValueError(f"{setting_name} must use a real public HTTPS domain, not an IP address")
+
+    placeholder_suffixes = (".example", ".invalid", ".test", ".localhost")
+    example_domains = {"example.com", "example.org", "example.net"}
+    if (
+        hostname == "localhost"
+        or hostname in example_domains
+        or any(hostname.endswith("." + domain) for domain in example_domains)
+        or any(hostname.endswith(suffix) for suffix in placeholder_suffixes)
+        or "." not in hostname
+    ):
+        raise ValueError(f"{setting_name} must use a real public HTTPS domain, not a reserved placeholder")
 
 
 class Settings(BaseSettings):
@@ -38,33 +77,10 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be at least 32 characters outside development/test")
             if not self.cookie_secure:
                 raise ValueError("COOKIE_SECURE must be true outside development/test")
-            public_url = urlsplit(self.public_base_url)
-            if (
-                public_url.scheme != "https"
-                or not public_url.hostname
-                or public_url.username
-                or public_url.password
-                or public_url.path not in {"", "/"}
-                or public_url.query
-                or public_url.fragment
-            ):
-                raise ValueError("PUBLIC_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment")
-
-            frontend_url = urlsplit(self.frontend_origin)
-            if (
-                frontend_url.scheme != "https"
-                or not frontend_url.hostname
-                or frontend_url.username
-                or frontend_url.password
-                or frontend_url.path
-                or frontend_url.query
-                or frontend_url.fragment
-            ):
-                raise ValueError("FRONTEND_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment")
+            _validate_production_https_origin(self.public_base_url, "PUBLIC_BASE_URL")
+            _validate_production_https_origin(self.frontend_origin, "FRONTEND_ORIGIN")
             if not self.cookie_name.startswith("__Host-"):
                 raise ValueError("COOKIE_NAME must use the __Host- prefix outside development/test")
-            if self.frontend_origin and not self.frontend_origin.startswith("https://"):
-                raise ValueError("FRONTEND_ORIGIN must use HTTPS outside development/test")
             database_password = make_url(self.database_url).password
             normalized_password = (database_password or "").strip().lower()
             if (
@@ -124,6 +140,7 @@ class Settings(BaseSettings):
             sender_domain = validated_sender.domain.lower()
             if (
                 sender_domain in {"example.com", "example.org", "example.net", "localhost"}
+                or any(sender_domain.endswith("." + domain) for domain in {"example.com", "example.org", "example.net"})
                 or any(sender_domain.endswith(suffix) for suffix in placeholder_suffixes)
             ):
                 raise ValueError("SMTP_FROM_EMAIL must use a real, verified sender domain")

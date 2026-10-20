@@ -339,8 +339,8 @@ def test_production_security_defaults_are_rejected():
         "environment": "production",
         "cookie_secure": True,
         "cookie_name": "__Host-campaign_session",
-        "frontend_origin": "https://frontend.example.com",
-        "public_base_url": "https://api.example.com",
+        "frontend_origin": "https://frontend.campaignsuite.com",
+        "public_base_url": "https://api.campaignsuite.com",
         "database_url": "postgresql+psycopg://campaign_app:db-random-secret-3a7bed038f@db.example.com:5432/campaigns",
     }
     for placeholder in (
@@ -370,8 +370,8 @@ def test_production_security_rejects_default_database_password():
             jwt_secret_key="unique-random-production-secret-9f8a7c6d5e4b3a2",
             cookie_secure=True,
             cookie_name="__Host-campaign_session",
-            frontend_origin="https://frontend.example.com",
-            public_base_url="https://api.example.com",
+            frontend_origin="https://frontend.campaignsuite.com",
+            public_base_url="https://api.campaignsuite.com",
             database_url="postgresql+psycopg://postgres:postgres@db.example.com:5432/campaigns",
         )
 
@@ -429,8 +429,8 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         "jwt_secret_key": "production-secret-value-that-is-at-least-32-bytes",
         "cookie_secure": True,
         "cookie_name": "__Host-campaign_session",
-        "frontend_origin": "https://app.example.com",
-        "public_base_url": "https://api.example.com",
+        "frontend_origin": "https://app.campaignsuite.com",
+        "public_base_url": "https://api.campaignsuite.com",
         "database_url": "postgresql+psycopg://campaign_app:db-random-secret-3a7bed038f@db.example.com:5432/campaigns",
         "redis_url": "redis://:4c09f1c8aab8d14e905e1f1f7f03e6c1a55bb8be1f62d540@redis:6379/0",
         "smtp_host": "smtp.mailgun.org",
@@ -448,11 +448,19 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
     with pytest.raises(ValueError, match="DATABASE_URL must use a unique database password of at least 24 characters"):
         Settings(**{**valid, "database_url": "postgresql+psycopg://campaign_app:short123@db.example.com:5432/campaigns"})
     with pytest.raises(ValueError, match="PUBLIC_BASE_URL must be an HTTPS origin"):
-        Settings(**{**valid, "public_base_url": "https://api.example.com/api"})
+        Settings(**{**valid, "public_base_url": "https://api.campaignsuite.com/api"})
     with pytest.raises(ValueError, match="FRONTEND_ORIGIN must be an HTTPS origin"):
-        Settings(**{**valid, "frontend_origin": "https://app.example.com/app"})
+        Settings(**{**valid, "frontend_origin": "https://app.campaignsuite.com/app"})
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL must use a real public HTTPS domain"):
+        Settings(**{**valid, "public_base_url": "https://api.example.com"})
+    with pytest.raises(ValueError, match="FRONTEND_ORIGIN must use a real public HTTPS domain"):
+        Settings(**{**valid, "frontend_origin": "https://app.example.com"})
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL must use a real public HTTPS domain"):
+        Settings(**{**valid, "public_base_url": "https://127.0.0.1"})
     with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must use a real, verified sender domain"):
         Settings(**{**valid, "smtp_from_email": "sender@example.com"})
+    with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must use a real, verified sender domain"):
+        Settings(**{**valid, "smtp_from_email": "sender@marketing.example.com"})
     with pytest.raises(ValueError, match="SMTP_PASSWORD must be replaced"):
         Settings(**{**valid, "smtp_username": "api-user", "smtp_password": "change-me-password"})
     with pytest.raises(ValueError, match="SMTP_FROM_EMAIL must be a valid mailbox address"):
