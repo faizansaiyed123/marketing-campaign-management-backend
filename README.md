@@ -8,7 +8,7 @@ Core workflows:
 - Campaign creation, editing, scheduling and execution.
 - Reusable, owner-scoped campaign templates with create/edit/delete workflows.
 - Durable delivery records; actual SMTP sending runs in the background worker.
-- Open tracking through a real 1x1 GIF endpoint and aggregate reporting from persisted delivery/event records.
+- Open tracking through a real 1x1 GIF endpoint, click tracking restricted to links present in that specific campaign delivery, and aggregate reporting from persisted delivery/event records.
 - Database-backed 15-second campaign worker plus Redis-backed shared authentication rate limits. Redis is included in Compose; Celery, RabbitMQ and Kafka are not required.
 - PostgreSQL relational constraints, indexes and Alembic migrations.
 
@@ -124,7 +124,7 @@ Redis is used for shared atomic login/registration rate-limit counters and runs 
 
 Campaign subjects and HTML bodies support `{{first_name}}`, `{{last_name}}`, `{{full_name}}`, and `{{email}}` contact placeholders. Unknown placeholders are left unchanged; contact values are escaped before being inserted into HTML.
 
-SMTP may be omitted in development; in that case campaign execution creates durable queued deliveries and never marks them sent. Production settings require `SMTP_HOST`, `SMTP_FROM_EMAIL`, TLS, and matching `SMTP_USERNAME`/`SMTP_PASSWORD` when authentication is used. Configure these values for your provider in the server's untracked `.env`. The API endpoint queues work and returns HTTP 202 without sending each email inside the request. The background worker sends messages and records sent/failed outcomes. A configured-but-invalid provider credential can only be confirmed by a real SMTP connection/delivery test.
+SMTP may be omitted in development; in that case campaign execution creates durable queued deliveries and never marks them sent. Production settings require `SMTP_HOST`, `SMTP_FROM_EMAIL`, TLS, and matching `SMTP_USERNAME`/`SMTP_PASSWORD` when authentication is used. Configure these values for your provider in the server's untracked `.env`. The API endpoint queues work and returns HTTP 202 without sending each email inside the request. The background worker sends messages and records sent/failed outcomes. SMTP recipient-refusal responses are recorded as failures instead of being falsely marked sent. A configured-but-invalid provider credential can only be confirmed by a real SMTP connection/delivery test.
 
 ### Stop
 
