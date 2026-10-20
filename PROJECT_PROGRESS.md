@@ -5,7 +5,7 @@ Production-readiness work is committed on main. The current backend code and reg
 - Shared authentication rate limits use atomic Redis rolling windows; missing/unavailable Redis fails authentication closed, and production readiness checks both PostgreSQL and Redis.
 - Cookie-authenticated mutations reject foreign Origin requests and cross-site Fetch Metadata requests; CORS is credentialed and limited to the configured frontend origin.
 - Production settings validate database/JWT/Redis passwords, HTTPS origins, secure __Host- cookie settings, SMTP sender syntax and verified TLS mode.
-- Both full-stack and API-only Compose overlays require production configuration before starting; Caddy handles HTTPS, and Uvicorn trusts only the configured proxy IP.
+- Both full-stack and API-only Compose overlays require production configuration before starting; Caddy handles HTTPS, Uvicorn trusts only the configured proxy IP, and both overlays derive `PUBLIC_BASE_URL` from `API_DOMAIN` so generated tracking/unsubscribe links match the actual API host.
 - Campaign execution writes durable deliveries and returns HTTP 202. The worker handles sending asynchronously.
 - The worker rechecks subscription status under a row lock immediately before sending. Contacts unsubscribed after queueing are marked skipped; reports show skipped distinct from sent/failed.
 - Scheduled campaigns are claimed only if their database state is still scheduled and due at claim time, preventing stale scheduler selections from executing campaigns the user has edited back to draft.
@@ -20,8 +20,8 @@ Production-readiness work is committed on main. The current backend code and reg
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
 - Backend application code verified by CI before this docs update: c9cf66a409bfb7faa07b7832585b73f5f0b78f11
-- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39399275908
-- CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, full-stack/API-only Compose validation, both Caddyfiles, Docker image build, and non-root API runtime.
+- Backend code CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39401297680
+- CI covers Python compilation, shell syntax and mocked backup/restore control-flow tests, PostgreSQL migrations and model parity, API tests against PostgreSQL, real Redis rate-limit integration, both production Compose variants including derived tracking URL checks, both Caddyfiles, Docker image build, and non-root API runtime.
 
 ## Delivery and report semantics
 - Each execution creates a durable run and one delivery row per subscribed recipient captured during queueing.
@@ -40,7 +40,7 @@ Production-readiness work is committed on main. The current backend code and reg
 - Full-stack Caddy and API-only Caddy are mutually exclusive on a single host because both publish TCP 80/443. The API-only route is for a Vercel-served frontend.
 
 ## Backups and recovery
-- scripts/backup_postgres.sh creates/verifies custom-format dumps with owner-only file mode, retention, and optional encrypted off-host storage through rclone.
+- `scripts/backup_postgres.sh` creates/verifies custom-format dumps with owner-only file mode, retention, and optional off-host copies through rclone. Encryption depends on configuring an rclone crypt remote or another client-side encrypted destination.
 - scripts/restore_postgres.sh validates and restores into a separate database, and refuses to overwrite the configured live database.
 - CI runs `tests/test_operations.sh` with a fake Docker executable to verify successful backup creation/validation and restrictive permissions, empty-dump rejection, refusal to restore over the configured live database, restore to a separate target, and handling a failed restore. This validates script control flow; a real production archive still must be restored in a controlled environment to prove recoverability.
 
