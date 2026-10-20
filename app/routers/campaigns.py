@@ -11,8 +11,11 @@ from ..services.campaigns import queue_campaign
 
 router=APIRouter(prefix="/api/v1/campaigns",tags=["campaigns"])
 
-def get_campaign(db,campaign_id,user):
-    campaign=db.scalar(select(Campaign).where(Campaign.id==campaign_id,Campaign.owner_id==user.id))
+def get_campaign(db,campaign_id,user,*,for_update=False):
+    statement=select(Campaign).where(Campaign.id==campaign_id,Campaign.owner_id==user.id)
+    if for_update:
+        statement=statement.with_for_update()
+    campaign=db.scalar(statement)
     if not campaign: raise HTTPException(404,"Campaign not found")
     return campaign
 
@@ -90,7 +93,8 @@ def create_campaign(payload:CampaignCreate,db:Session=Depends(get_db),user=Depen
 
 @router.patch("/{campaign_id}",response_model=CampaignResponse)
 def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    campaign=get_campaign(db,campaign_id,user)
+    # Serialize edits against execute/worker state transitions in PostgreSQL.
+    campaign=get_campaign(db,campaign_id,user,for_update=True)
     if campaign.status in {"queued","sent"}:
         raise HTTPException(409,"Queued or sent campaigns cannot be edited")
     data=payload.model_dump(exclude_unset=True)

@@ -1126,6 +1126,11 @@ def test_execution_is_single_use_while_queued(client):
     assert first.status_code==202
     second=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
     assert second.status_code==409
+    edit=client.patch(f"/api/v1/campaigns/{camp['id']}",json={"subject":"Must remain queued"})
+    assert edit.status_code==409
+    report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
+    assert report["campaign"]["status"]=="queued"
+    assert report["summary"]["queued"]==1
 
 def test_scheduled_campaign_is_queued_by_worker(client, monkeypatch):
     register(client,"worker@example.com")
