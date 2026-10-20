@@ -1132,6 +1132,43 @@ def test_execution_is_single_use_while_queued(client):
     assert report["campaign"]["status"]=="queued"
     assert report["summary"]["queued"]==1
 
+def test_scheduler_will_not_claim_a_campaign_changed_back_to_draft(client):
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    from app.models import Campaign
+    from app.services.campaigns import queue_campaign
+    import pytest
+
+    register(client, "scheduler-race@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Scheduler race"}).json()
+    campaign_data = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Scheduler race",
+            "audience_id": audience["id"],
+            "subject": "x",
+            "body_html": "x",
+            "scheduled_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+        },
+    ).json()
+
+    with Session(engine) as db:
+        campaign = db.get(Campaign, campaign_data["id"])
+        # Simulate the scheduler having selected a due row, after which a user
+        # changes its state before the worker performs the atomic claim.
+        campaign.status = "draft"
+        campaign.scheduled_at = None
+        db.commit()
+
+        with pytest.raises(ValueError, match="already queued or sent"):
+            queue_campaign(db, campaign, require_due_schedule=True)
+
+        db.refresh(campaign)
+        assert campaign.status == "draft"
+        assert db.query(Campaign).filter_by(id=campaign.id).count() == 1
+
+
 def test_scheduled_campaign_is_queued_by_worker(client, monkeypatch):
     register(client,"worker@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Worker"}).json()

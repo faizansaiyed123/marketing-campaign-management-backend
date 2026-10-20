@@ -30,7 +30,7 @@ def process_due_campaigns() -> int:
 
         for campaign in due:
             try:
-                run = queue_campaign(db, campaign)
+                run = queue_campaign(db, campaign, require_due_schedule=True)
                 processed += 1
             except ValueError:
                 db.rollback()

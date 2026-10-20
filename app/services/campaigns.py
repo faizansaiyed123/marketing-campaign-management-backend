@@ -20,14 +20,32 @@ LINK_RE = re.compile(
 )
 TEMPLATE_FIELD_RE = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
 
-def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
+def queue_campaign(
+    db: Session,
+    campaign: Campaign,
+    *,
+    require_due_schedule: bool = False,
+) -> CampaignRun:
     retry_failed = campaign.status in {"failed", "partial"}
+    claim_conditions = [Campaign.id == campaign.id]
+    if require_due_schedule:
+        # The worker may have loaded this row before a user edited its
+        # schedule. Claim only if the database row is still scheduled and due.
+        claim_conditions.extend(
+            [
+                Campaign.status == "scheduled",
+                Campaign.scheduled_at.is_not(None),
+                Campaign.scheduled_at <= datetime.now(timezone.utc),
+            ]
+        )
+    else:
+        claim_conditions.append(
+            Campaign.status.in_(("draft", "scheduled", "failed", "partial", "completed"))
+        )
+
     claimed = db.execute(
         update(Campaign)
-        .where(
-            Campaign.id == campaign.id,
-            Campaign.status.in_(("draft", "scheduled", "failed", "partial", "completed")),
-        )
+        .where(*claim_conditions)
         .values(status="queued")
     ).rowcount
 
