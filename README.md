@@ -54,6 +54,8 @@ This starts:
 
 The API container waits for PostgreSQL health before starting and applies Alembic migrations before launching FastAPI. The worker starts after the API health check succeeds.
 
+For local development, Compose binds the database and API ports to loopback only. Do not expose the raw HTTP API port directly to the public internet. In production, route public HTTPS traffic through a TLS-terminating reverse proxy or managed HTTPS load balancer, and keep PostgreSQL private. The API container runs as a non-root user.
+
 The API health endpoint is:
 
 ```

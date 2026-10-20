@@ -2,7 +2,12 @@ def register(client,email,name="User"):
     r=client.post("/api/v1/auth/register",json={"email":email,"name":name,"password":"strong-password-123"}); assert r.status_code==201,r.text
 
 def test_health(client):
-    assert client.get("/health").json()=={"status":"ok"}
+    response = client.get("/health")
+    assert response.json() == {"status": "ok"}
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
 
 def test_auth_flow(client):
     register(client,"auth@example.com")
