@@ -127,6 +127,41 @@ def test_health(client):
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
 
+
+
+def test_cookie_authenticated_mutations_reject_foreign_origins(client):
+    register(client, "origin-guard@example.com")
+
+    rejected = client.post(
+        "/api/v1/audiences",
+        json={"name": "Should not be created"},
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert rejected.status_code == 403
+    assert rejected.json()["detail"] == "Request origin is not allowed"
+    assert rejected.headers["cache-control"] == "no-store"
+    assert client.get("/api/v1/audiences").json() == []
+
+    allowed = client.post(
+        "/api/v1/audiences",
+        json={"name": "Allowed origin"},
+        headers={"Origin": "http://testserver"},
+    )
+    assert allowed.status_code == 201, allowed.text
+    assert allowed.json()["name"] == "Allowed origin"
+
+
+def test_cross_site_fetch_metadata_without_origin_is_rejected(client):
+    register(client, "fetch-site-guard@example.com")
+    rejected = client.post(
+        "/api/v1/audiences",
+        json={"name": "Cross-site request"},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert rejected.status_code == 403
+    assert client.get("/api/v1/audiences").json() == []
+
+
 def test_auth_flow(client):
     register(client,"auth@example.com")
     assert client.get("/api/v1/auth/me").status_code==200

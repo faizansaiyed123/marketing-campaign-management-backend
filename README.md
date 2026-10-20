@@ -235,7 +235,7 @@ http://localhost:8000
 
 When running both repositories locally, start the backend on port 8000 and configure the frontend's `VITE_API_URL` to that address.
 
-The backend allows credentialed CORS only for the configured `FRONTEND_ORIGIN`.
+The backend allows credentialed CORS only for the configured `FRONTEND_ORIGIN`. Unsafe `/api/v1/` requests also reject a foreign `Origin` header and reject cross-site Fetch Metadata when `Origin` is absent; this is additional CSRF defense for cookie-authenticated actions across sibling subdomains. Non-browser clients that omit both headers remain supported.
 
 ## Local development
 

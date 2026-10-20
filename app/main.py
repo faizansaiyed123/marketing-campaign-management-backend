@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,7 +22,23 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    # Cookie-authenticated mutation endpoints must not accept browser requests
+    # initiated by another origin (including sibling subdomains that are
+    # "same-site" for SameSite=Strict cookies).
+    unsafe_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    origin = request.headers.get("origin")
+    fetch_site = request.headers.get("sec-fetch-site", "").lower()
+    api_mutation = request.url.path.startswith("/api/v1/") and request.method in unsafe_methods
+    origin_mismatch = origin is not None and origin.rstrip("/") != settings.frontend_origin.rstrip("/")
+    cross_site_without_origin = origin is None and fetch_site == "cross-site"
+    if api_mutation and (origin_mismatch or cross_site_without_origin):
+        response = JSONResponse(
+            status_code=403,
+            content={"detail": "Request origin is not allowed"},
+        )
+    else:
+        response = await call_next(request)
+
     if request.url.path.startswith("/api/") or request.url.path == "/health" or request.url.path.startswith("/track/"):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
