@@ -396,6 +396,74 @@ def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
     assert client.post("/api/v1/audiences",json={"name":"   "}).status_code==422
 
+
+
+def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, monkeypatch):
+    register(client, "personalization@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Personalization"}).json()
+    contact_response = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={
+            "email": "alice@example.com",
+            "first_name": "Alice",
+            "last_name": "O'Connor <b>",
+        },
+    )
+    assert contact_response.status_code == 201, contact_response.text
+
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Personalized welcome",
+            "audience_id": audience["id"],
+            "subject": "Hello {{first_name}}",
+            "body_html": "<p>Hello {{full_name}} — your address is {{email}}.</p>",
+        },
+    ).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self): pass
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message): sent.append(message)
+        def quit(self): pass
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.example",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=True,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "smtplib", SimpleNamespace(SMTP=FakeSMTP))
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+
+    queued = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+
+    assert len(sent) == 1
+    message = sent[0]
+    assert message["Subject"] == "Hello Alice"
+    plain = message.get_body(preferencelist=("plain",)).get_content()
+    html = message.get_body(preferencelist=("html",)).get_content()
+    assert "O'Connor <b>" in plain
+    assert "alice@example.com" in plain
+    assert "O&#x27;Connor &lt;b&gt;" in html
+    assert "alice@example.com" in html
+    assert "{{full_name}}" not in html
+    report = client.get(f"/api/v1/campaigns/{campaign['id']}/report").json()
+    assert report["latest_run_status"] == "sent"
+    assert report["summary"]["sent"] == 1
+
+
 def test_smtp_success_sends_and_tracks(client,monkeypatch):
     register(client,"smtp-success@example.com")
     a=client.post("/api/v1/audiences",json={"name":"SMTP Success"}).json()

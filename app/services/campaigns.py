@@ -17,6 +17,7 @@ LINK_RE = re.compile(
     r'(<a\b[^>]*?\bhref\s*=\s*)(["\'])(https?://[^"\']+)(\2)',
     re.IGNORECASE,
 )
+TEMPLATE_FIELD_RE = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
 
 def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
     retry_failed = campaign.status in {"failed", "partial"}
@@ -104,9 +105,9 @@ def _rewrite_links(body_html: str, tracking_token: str) -> str:
 
     return LINK_RE.sub(replace, body_html)
 
-def build_tracked_html(campaign: Campaign, delivery: Delivery) -> str:
+def build_tracked_html(campaign: Campaign, delivery: Delivery, body_html: str | None = None) -> str:
     base = get_settings().public_base_url.rstrip("/")
-    tracked_body = _rewrite_links(campaign.body_html, delivery.tracking_token)
+    tracked_body = _rewrite_links(body_html if body_html is not None else campaign.body_html, delivery.tracking_token)
     unsubscribe_url = f"{base}/track/{delivery.tracking_token}/unsubscribe"
     pixel_url = f"{base}/track/{delivery.tracking_token}/open"
     unsubscribe = (
@@ -122,6 +123,43 @@ def build_tracked_html(campaign: Campaign, delivery: Delivery) -> str:
 
 def _plain_text(html_body: str) -> str:
     return unescape(re.sub(r"<[^>]+>", " ", html_body)).strip()
+
+def render_personalized_content(subject: str, body_html: str, contact: Contact) -> tuple[str, str]:
+    """Merge supported contact fields into a campaign subject and HTML body.
+
+    HTML replacement values are escaped for safe interpolation into email markup.
+    Unknown placeholders remain unchanged so unsupported fields are not silently
+    replaced with incorrect data.
+    """
+    first_name = contact.first_name or ""
+    last_name = contact.last_name or ""
+    full_name = " ".join(part for part in (first_name, last_name) if part).strip()
+    raw_values = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": full_name,
+        "email": contact.email,
+    }
+
+    def replace_subject(match: re.Match) -> str:
+        key = match.group(1).lower()
+        if key not in raw_values:
+            return match.group(0)
+        # RFC message headers must not contain caller-controlled newline bytes.
+        return re.sub(r"[\r\n\x00-\x1f\x7f]+", " ", raw_values[key]).strip()
+
+    def replace_html(match: re.Match) -> str:
+        key = match.group(1).lower()
+        if key not in raw_values:
+            return match.group(0)
+        return escape(raw_values[key], quote=True)
+
+    personalized_subject = TEMPLATE_FIELD_RE.sub(replace_subject, subject)
+    personalized_subject = re.sub(r"[\r\n\x00-\x1f\x7f]+", " ", personalized_subject)
+    personalized_subject = " ".join(personalized_subject.split()).strip()
+    personalized_body = TEMPLATE_FIELD_RE.sub(replace_html, body_html)
+    return personalized_subject, personalized_body
+
 
 def _finalize_run(db: Session, run_id: str) -> CampaignRun | None:
     run = db.get(CampaignRun, run_id)
@@ -207,8 +245,13 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                 if delivery is None:
                     break
 
+                personalized_subject, personalized_body = render_personalized_content(
+                    run.campaign.subject,
+                    run.campaign.body_html,
+                    delivery.contact,
+                )
                 message = EmailMessage(policy=policy.SMTP)
-                message["Subject"] = run.campaign.subject
+                message["Subject"] = personalized_subject or "Campaign message"
                 message["From"] = settings.smtp_from_email
                 message["To"] = delivery.contact.email
                 message["List-Unsubscribe"] = (
@@ -216,9 +259,9 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                     f"{delivery.tracking_token}/unsubscribe>"
                 )
                 message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-                message.set_content(_plain_text(run.campaign.body_html) or "Campaign message")
+                message.set_content(_plain_text(personalized_body) or "Campaign message")
                 message.add_alternative(
-                    build_tracked_html(run.campaign, delivery),
+                    build_tracked_html(run.campaign, delivery, body_html=personalized_body),
                     subtype="html",
                 )
 
