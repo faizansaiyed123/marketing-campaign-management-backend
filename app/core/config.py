@@ -77,8 +77,11 @@ class Settings(BaseSettings):
 
             smtp_host = self.smtp_host.strip().lower().rstrip(".")
             placeholder_suffixes = (".example", ".invalid", ".test", ".localhost")
+            example_domains = {"example.com", "example.org", "example.net"}
             if (
-                smtp_host in {"localhost", "example.com", "example.org", "example.net"}
+                smtp_host == "localhost"
+                or smtp_host in example_domains
+                or any(smtp_host.endswith("." + domain) for domain in example_domains)
                 or any(smtp_host.endswith(suffix) for suffix in placeholder_suffixes)
             ):
                 raise ValueError("SMTP_HOST must use a real provider hostname, not an example placeholder")
