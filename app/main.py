@@ -22,7 +22,7 @@ app.add_middleware(
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/api/") or request.url.path == "/health":
+    if request.url.path.startswith("/api/") or request.url.path == "/health" or request.url.path.startswith("/track/"):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     response.headers.setdefault("X-Content-Type-Options", "nosniff")

@@ -28,7 +28,8 @@ Branches discovered: `main`, `development`, `chore/startup-docker-support`.
 - `app/routers/auth.py`: logout expires the session cookie with matching HttpOnly, Secure, SameSite=Strict, and Path attributes.
 - `Dockerfile`: API and worker image use a dedicated UID 10001 instead of root; bytecode writes are disabled.
 - `docker-compose.yml`: local database and API host ports bind to loopback only, preventing accidental direct LAN/public exposure.
-- `app/main.py`: applies nosniff, frame-denial, no-referrer, and restrictive permissions headers across responses.
+- `app/main.py`: applies nosniff, frame-denial, no-referrer, and restrictive permissions headers across responses; API, health and tracking responses are marked no-store.
+- `Dockerfile`: uses `exec` for the Uvicorn process after migrations so stop signals can reach the server cleanly.
 - `.github/workflows/ci.yml`: adds a container check to ensure the API image runs as UID 10001.
 - `tests/test_api.py`: added regression coverage for JWT placeholders, invalid production cookie names, default database password rejection, and production cookie deletion attributes.
 - `README.md`: documented production JWT/cookie/database prerequisites and the SameSite=Strict custom-domain requirement.
@@ -53,7 +54,7 @@ Branches discovered: `main`, `development`, `chore/startup-docker-support`.
 
 ## Latest container hardening commit and pending verification
 - The non-root Docker runtime, loopback-only host port bindings, and application security headers were committed to `main` at `7573e4fa197212ea9d36b1817ed1220b68694a1c`.
-- The next CI run must validate PostgreSQL-backed tests, Compose configuration, Docker image build, and the explicit non-root UID check before this phase is considered verified.
+- The last backend CI run for commit `dc8698a6d532` passed PostgreSQL-backed tests, migrations/parity, Compose validation, image build, and the explicit non-root UID check. A fresh CI run will validate the added no-store tracking assertion and startup signal handling.
 
 ## Next action
 1. Verify the backend hardening CI run and non-root UID check.

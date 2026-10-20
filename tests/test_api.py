@@ -38,7 +38,9 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
         token=delivery.tracking_token
 
     assert client.get(f"/track/{token}/open").status_code==200
-    assert client.get(f"/track/{token}/click",params={"url":"https://example.com/path"},follow_redirects=False).status_code==307
+    click_response = client.get(f"/track/{token}/click", params={"url": "https://example.com/path"}, follow_redirects=False)
+    assert click_response.status_code == 307
+    assert click_response.headers["cache-control"] == "no-store"
     from app.services.campaigns import build_tracked_html
     with Session(engine) as db:
         delivery=db.scalar(select(Delivery))
