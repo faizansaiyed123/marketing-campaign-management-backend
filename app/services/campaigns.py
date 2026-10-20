@@ -4,6 +4,7 @@ from email.message import EmailMessage
 from html import escape, unescape
 import re
 import smtplib
+import ssl
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -247,9 +248,17 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
     db.rollback()
 
     try:
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20)
-        if settings.smtp_use_tls:
-            server.starttls()
+        if getattr(settings, "smtp_use_ssl", False):
+            server = smtplib.SMTP_SSL(
+                settings.smtp_host,
+                settings.smtp_port,
+                timeout=20,
+                context=ssl.create_default_context(),
+            )
+        else:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20)
+            if settings.smtp_use_tls:
+                server.starttls(context=ssl.create_default_context())
         if settings.smtp_username:
             server.login(settings.smtp_username, settings.smtp_password or "")
 

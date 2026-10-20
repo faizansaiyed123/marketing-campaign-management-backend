@@ -90,11 +90,12 @@ Important variables include:
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
 - `SMTP_FROM_EMAIL`
-- `SMTP_USE_TLS`
+- `SMTP_USE_TLS` (STARTTLS, commonly port 587)
+- `SMTP_USE_SSL` (implicit TLS, commonly port 465; do not enable both)
 
 Do not commit real secrets.
 
-For non-development environments, use unique random `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, and `REDIS_PASSWORD`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and `FRONTEND_ORIGIN`. Production startup rejects common JWT/database placeholders, weak or missing Redis credentials, missing SMTP host/sender, mismatched SMTP login credentials, and non-TLS SMTP settings. Never deploy with the development-only Redis password. Keep Redis private; Compose does not publish its port. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker. Because the session cookie is `SameSite=Strict`, deploy the frontend and API on HTTPS custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`). Unrelated default provider domains may cause browsers to block the session cookie.
+For non-development environments, use unique random `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, and `REDIS_PASSWORD`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and `FRONTEND_ORIGIN`. Production startup rejects common JWT/database placeholders, weak or missing Redis credentials, missing SMTP host/sender, mismatched SMTP login credentials, and configurations where neither or both SMTP TLS modes are enabled. Never deploy with the development-only Redis password. Keep Redis private; Compose does not publish its port. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker. Because the session cookie is `SameSite=Strict`, deploy the frontend and API on HTTPS custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`). Unrelated default provider domains may cause browsers to block the session cookie.
 
 ### Database and migrations
 
@@ -124,7 +125,7 @@ Redis is used for shared atomic login/registration rate-limit counters and runs 
 
 Campaign subjects and HTML bodies support `{{first_name}}`, `{{last_name}}`, `{{full_name}}`, and `{{email}}` contact placeholders. Unknown placeholders are left unchanged; contact values are escaped before being inserted into HTML.
 
-SMTP may be omitted in development; in that case campaign execution creates durable queued deliveries and never marks them sent. Production settings require `SMTP_HOST`, `SMTP_FROM_EMAIL`, TLS, and matching `SMTP_USERNAME`/`SMTP_PASSWORD` when authentication is used. Configure these values for your provider in the server's untracked `.env`. The API endpoint queues work and returns HTTP 202 without sending each email inside the request. The background worker sends messages and records sent/failed outcomes. SMTP recipient-refusal responses are recorded as failures instead of being falsely marked sent. A configured-but-invalid provider credential can only be confirmed by a real SMTP connection/delivery test.
+SMTP may be omitted in development; in that case campaign execution creates durable queued deliveries and never marks them sent. Production settings require `SMTP_HOST`, `SMTP_FROM_EMAIL`, either certificate-verified STARTTLS (`SMTP_USE_TLS=true`, commonly port 587) or certificate-verified implicit TLS (`SMTP_USE_SSL=true`, commonly port 465), and matching `SMTP_USERNAME`/`SMTP_PASSWORD` when authentication is used. The two TLS modes are mutually exclusive. Configure these values for your provider in the server's untracked `.env`. The API endpoint queues work and returns HTTP 202 without sending each email inside the request. The background worker sends messages and records sent/failed outcomes. SMTP recipient-refusal responses are recorded as failures instead of being falsely marked sent. A configured-but-invalid provider credential can only be confirmed by a real SMTP connection/delivery test.
 
 ### Stop
 

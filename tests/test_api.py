@@ -269,6 +269,11 @@ def test_production_requires_shared_rate_limits_and_working_mail_configuration()
         Settings(**{**valid, "smtp_from_email": "<verified sender address>"})
     with pytest.raises(ValueError, match="SMTP_USERNAME must be replaced"):
         Settings(**{**valid, "smtp_username": "<provider username>", "smtp_password": "<provider password>"})
+    with pytest.raises(ValueError, match="Exactly one of SMTP_USE_TLS or SMTP_USE_SSL"):
+        Settings(**{**valid, "smtp_use_tls": False, "smtp_use_ssl": False})
+    with pytest.raises(ValueError, match="Exactly one of SMTP_USE_TLS or SMTP_USE_SSL"):
+        Settings(**{**valid, "smtp_use_tls": True, "smtp_use_ssl": True})
+    Settings(**{**valid, "smtp_use_tls": False, "smtp_use_ssl": True})
 
 
 def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
@@ -459,7 +464,7 @@ def test_smtp_recipient_refusal_is_recorded_as_failed(client, monkeypatch):
 
     class RefusingSMTP:
         def __init__(self, *args, **kwargs): pass
-        def starttls(self): pass
+        def starttls(self, *args, **kwargs): pass
         def login(self, *args, **kwargs): pass
         def send_message(self, message):
             return {message["To"]: (550, b"mailbox unavailable")}
@@ -489,6 +494,118 @@ def test_smtp_recipient_refusal_is_recorded_as_failed(client, monkeypatch):
         delivery = db.scalar(select(Delivery))
         assert delivery.status == "failed"
         assert "550" in delivery.error_message
+
+
+
+
+def test_smtp_uses_certificate_validating_starttls_context(client, monkeypatch):
+    register(client, "smtp-starttls@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "STARTTLS"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "starttls-recipient@example.com"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "STARTTLS",
+            "audience_id": audience["id"],
+            "subject": "TLS",
+            "body_html": "<p>Verified TLS</p>",
+        },
+    ).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+
+    observed = {"context": None, "sent": 0}
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs): pass
+        def starttls(self, context=None): observed["context"] = context
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message): observed["sent"] += 1; return {}
+        def quit(self): pass
+
+    tls_context = object()
+    monkeypatch.setattr(service.ssl, "create_default_context", lambda: tls_context)
+    monkeypatch.setattr(
+        service,
+        "smtplib",
+        SimpleNamespace(SMTP=FakeSMTP, SMTP_SSL=FakeSMTP),
+    )
+    settings = SimpleNamespace(
+        smtp_host="smtp.example",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=True,
+        smtp_use_ssl=False,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+    response = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert response.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    assert observed["context"] is tls_context
+    assert observed["sent"] == 1
+
+
+def test_smtp_supports_implicit_tls_with_verified_context(client, monkeypatch):
+    register(client, "smtp-implicit-tls@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Implicit TLS"}).json()
+    client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "implicit-recipient@example.com"},
+    )
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Implicit TLS",
+            "audience_id": audience["id"],
+            "subject": "TLS",
+            "body_html": "<p>Implicit TLS</p>",
+        },
+    ).json()
+
+    from types import SimpleNamespace
+    import app.services.campaigns as service
+
+    observed = {"host": None, "port": None, "context": None, "sent": 0}
+
+    class FakeSMTPSSL:
+        def __init__(self, host, port, timeout=20, context=None):
+            observed.update(host=host, port=port, context=context)
+        def login(self, *args, **kwargs): pass
+        def send_message(self, message): observed["sent"] += 1; return {}
+        def quit(self): pass
+
+    tls_context = object()
+    monkeypatch.setattr(service.ssl, "create_default_context", lambda: tls_context)
+    monkeypatch.setattr(
+        service,
+        "smtplib",
+        SimpleNamespace(SMTP=FakeSMTPSSL, SMTP_SSL=FakeSMTPSSL),
+    )
+    settings = SimpleNamespace(
+        smtp_host="smtp.example",
+        smtp_port=465,
+        smtp_username="user",
+        smtp_password="pass",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=False,
+        smtp_use_ssl=True,
+        public_base_url="http://localhost:8000",
+    )
+    monkeypatch.setattr(service, "get_settings", lambda: settings)
+    response = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert response.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    assert observed["host"] == "smtp.example"
+    assert observed["port"] == 465
+    assert observed["context"] is tls_context
+    assert observed["sent"] == 1
 
 
 def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, monkeypatch):
@@ -521,7 +638,7 @@ def test_smtp_delivery_personalizes_subject_and_escapes_contact_values(client, m
 
     class FakeSMTP:
         def __init__(self, *args, **kwargs): pass
-        def starttls(self): pass
+        def starttls(self, *args, **kwargs): pass
         def login(self, *args, **kwargs): pass
         def send_message(self, message): sent.append(message)
         def quit(self): pass
@@ -575,7 +692,7 @@ def test_smtp_success_sends_and_tracks(client,monkeypatch):
     sent=[]
     class FakeSMTP:
         def __init__(self,*args,**kwargs): pass
-        def starttls(self): pass
+        def starttls(self, *args, **kwargs): pass
         def login(self,*args,**kwargs): pass
         def send_message(self,message): sent.append(message)
         def quit(self): pass
@@ -617,7 +734,7 @@ def test_smtp_sends_multiple_recipients(client,monkeypatch):
     sent=[]
     class FakeSMTP:
         def __init__(self,*args,**kwargs): pass
-        def starttls(self): pass
+        def starttls(self, *args, **kwargs): pass
         def login(self,*args,**kwargs): pass
         def send_message(self,message): sent.append(message)
         def quit(self): pass
@@ -676,7 +793,7 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
 
     class FakeSMTP:
         def __init__(self,*args,**kwargs): pass
-        def starttls(self): pass
+        def starttls(self, *args, **kwargs): pass
         def login(self,*args,**kwargs): pass
         def send_message(self,message):
             sent.append(message["To"])

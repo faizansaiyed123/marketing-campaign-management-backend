@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")
@@ -117,8 +118,10 @@ class Settings(BaseSettings):
 
             if bool(self.smtp_username) != bool(self.smtp_password):
                 raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
-            if not self.smtp_use_tls:
-                raise ValueError("SMTP_USE_TLS must be true outside development/test")
+            if self.smtp_use_tls == self.smtp_use_ssl:
+                raise ValueError(
+                    "Exactly one of SMTP_USE_TLS or SMTP_USE_SSL must be true outside development/test"
+                )
         return self
 
 
