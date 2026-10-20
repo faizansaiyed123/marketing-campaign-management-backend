@@ -18,7 +18,7 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN to the public frontend HTTPS origin}
       COOKIE_SECURE: "true"
       COOKIE_NAME: ${COOKIE_NAME:?Set COOKIE_NAME=__Host-campaign_session}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the public API HTTPS origin}
+      PUBLIC_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN in backend .env}
       SMTP_HOST: ${SMTP_HOST:?Set real SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -42,7 +42,7 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN to the public frontend HTTPS origin}
       COOKIE_SECURE: "true"
       COOKIE_NAME: ${COOKIE_NAME:?Set COOKIE_NAME=__Host-campaign_session}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the public API HTTPS origin}
+      PUBLIC_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN in backend .env}
       SMTP_HOST: ${SMTP_HOST:?Set real SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}

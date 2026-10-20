@@ -102,10 +102,11 @@ jobs:
           FRONTEND_ORIGIN: https://app.example.com
           COOKIE_SECURE: "true"
           COOKIE_NAME: __Host-campaign_session
-          PUBLIC_BASE_URL: https://api.example.com
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.production.yml config
-          docker compose -f docker-compose.yml -f docker-compose.api-production.yml config
+          full_config="$(docker compose -f docker-compose.yml -f docker-compose.production.yml config)"
+          printf '%s\n' "$full_config" | grep -Fq 'PUBLIC_BASE_URL: https://api.example.com'
+          api_config="$(docker compose -f docker-compose.yml -f docker-compose.api-production.yml config)"
+          printf '%s\n' "$api_config" | grep -Fq 'PUBLIC_BASE_URL: https://api.example.com'
       - name: Validate Caddyfile
         run: |
           docker run --rm \

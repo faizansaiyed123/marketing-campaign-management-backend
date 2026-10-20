@@ -237,7 +237,7 @@ The frontend repository includes Vercel configuration for its Vite build and SPA
 1. In your existing Vercel dashboard, import/select the GitHub frontend repository, set the production branch to `main`, and keep the project root at the repository root.
 2. Set the Production environment variable `VITE_API_URL=https://api.your-real-domain.example` in Project Settings → Environment Variables. This variable is public and embedded at build time. Trigger a new production deployment after changing it.
 3. Assign a custom HTTPS frontend domain such as `app.your-real-domain.example` to the Vercel project. Use an API subdomain under the same registrable domain (for example, `api.your-real-domain.example`) so the backend's `SameSite=Strict` session cookie works.
-4. Point the API subdomain's DNS record to your Linux server, then use `docker-compose.api-production.yml` with `Caddyfile.api-only`. Create the shared network using the documented subnet and set `API_DOMAIN`, `FRONTEND_ORIGIN` to the exact Vercel custom-domain origin, `PUBLIC_BASE_URL` to the API HTTPS origin, strong DB/JWT/Redis secrets, and working SMTP settings in the backend's untracked `.env`.
+4. Point the API subdomain's DNS record to your Linux server, then use `docker-compose.api-production.yml` with `Caddyfile.api-only`. Create the shared network using the documented subnet and set `API_DOMAIN` and `FRONTEND_ORIGIN` to their real HTTPS custom-domain values, strong DB/JWT/Redis secrets, and working SMTP settings. The production overlay derives `PUBLIC_BASE_URL` from `API_DOMAIN` so tracking and unsubscribe links always use the Caddy API host in the backend's untracked `.env`.
 5. Deploy the backend with:
 
    ```bash
