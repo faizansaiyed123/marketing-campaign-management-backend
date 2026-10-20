@@ -169,7 +169,7 @@ After checking the restored database, switch `POSTGRES_DB` in the server's untra
 
 ## Single-host production deployment (Caddy + HTTPS)
 
-The optional `docker-compose.production.yml` overlay adds Caddy as the public TLS-terminating reverse proxy. It serves the frontend at `FRONTEND_DOMAIN` and routes the API at `API_DOMAIN`. Caddy obtains and renews certificates automatically when both DNS records point to this server and inbound ports 80 and 443 are reachable.
+The optional `docker-compose.production.yml` overlay adds Caddy as the public TLS-terminating reverse proxy. It serves the frontend at `FRONTEND_DOMAIN` and routes the API at `API_DOMAIN`. Caddy obtains and renews certificates automatically when both DNS records point to this server and inbound ports 80 and 443 are reachable. The production overlay overrides development defaults and requires the real database/Redis/JWT settings, HTTPS origins, domains, and SMTP sender/provider configuration during Compose config resolution, so an incomplete `.env` fails before containers are started.
 
 This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy service. It assumes a Linux server/VPS with Docker Engine and Compose v2, public DNS control, and a persistent disk. It does **not** provision the server, DNS, firewall, or SMTP account for you.
 
@@ -197,6 +197,7 @@ This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy servi
    SMTP_PASSWORD=<provider password or app password, if required>
    SMTP_FROM_EMAIL=<verified sender address>
    SMTP_USE_TLS=true
+   SMTP_USE_SSL=false
    FRONTEND_DOMAIN=app.example.com
    API_DOMAIN=api.example.com
    FRONTEND_ORIGIN=https://app.example.com

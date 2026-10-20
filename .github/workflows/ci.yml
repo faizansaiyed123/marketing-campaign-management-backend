@@ -71,6 +71,12 @@ jobs:
         run: pytest -q
       - name: Validate Docker Compose
         run: docker compose config
+      - name: Reject incomplete production configuration
+        run: |
+          if docker compose -f docker-compose.yml -f docker-compose.production.yml config >/dev/null 2>&1; then
+            echo "Production Compose unexpectedly accepted missing deployment configuration." >&2
+            exit 1
+          fi
       - name: Validate production Compose overlay
         env:
           ENVIRONMENT: production
