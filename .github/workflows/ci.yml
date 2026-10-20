@@ -74,7 +74,11 @@ jobs:
       - name: Reject incomplete production configuration
         run: |
           if docker compose -f docker-compose.yml -f docker-compose.production.yml config >/dev/null 2>&1; then
-            echo "Production Compose unexpectedly accepted missing deployment configuration." >&2
+            echo "Full production Compose unexpectedly accepted missing deployment configuration." >&2
+            exit 1
+          fi
+          if docker compose -f docker-compose.yml -f docker-compose.api-production.yml config >/dev/null 2>&1; then
+            echo "API-only production Compose unexpectedly accepted missing deployment configuration." >&2
             exit 1
           fi
       - name: Validate production Compose overlay
