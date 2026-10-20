@@ -94,13 +94,20 @@ jobs:
           COOKIE_SECURE: "true"
           COOKIE_NAME: __Host-campaign_session
           PUBLIC_BASE_URL: https://api.example.com
-        run: docker compose -f docker-compose.yml -f docker-compose.production.yml config
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.production.yml config
+          docker compose -f docker-compose.yml -f docker-compose.api-production.yml config
       - name: Validate Caddyfile
         run: |
           docker run --rm \
             -e FRONTEND_DOMAIN=app.example.com \
             -e API_DOMAIN=api.example.com \
             -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm \
+            -e API_DOMAIN=api.example.com \
+            -v "$PWD/Caddyfile.api-only:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine \
             caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Build API image

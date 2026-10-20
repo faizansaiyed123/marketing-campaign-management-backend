@@ -228,6 +228,24 @@ The production overlay publishes only Caddy's 80/443 ports publicly. It retains 
 
 For a managed hosting provider or a pre-existing reverse proxy, use that platform's HTTPS and persistent-database facilities instead; this Caddy overlay is optional.
 
+## Deploy frontend on your existing Vercel project
+
+The frontend repository includes Vercel configuration for its Vite build and SPA routing. Use this API-only backend overlay if Vercel serves the frontend; do not start both the API-only overlay and the full two-domain Caddy overlay on the same server because both publish ports 80/443.
+
+1. In your existing Vercel dashboard, import/select the GitHub frontend repository, set the production branch to `main`, and keep the project root at the repository root.
+2. Set the Production environment variable `VITE_API_URL=https://api.your-real-domain.example` in Project Settings → Environment Variables. This variable is public and embedded at build time. Trigger a new production deployment after changing it.
+3. Assign a custom HTTPS frontend domain such as `app.your-real-domain.example` to the Vercel project. Use an API subdomain under the same registrable domain (for example, `api.your-real-domain.example`) so the backend's `SameSite=Strict` session cookie works.
+4. Point the API subdomain's DNS record to your Linux server, then use `docker-compose.api-production.yml` with `Caddyfile.api-only`. Create the shared network using the documented subnet and set `API_DOMAIN`, `FRONTEND_ORIGIN` to the exact Vercel custom-domain origin, `PUBLIC_BASE_URL` to the API HTTPS origin, strong DB/JWT/Redis secrets, and working SMTP settings in the backend's untracked `.env`.
+5. Deploy the backend with:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.api-production.yml up --build -d
+   ```
+
+6. Test login/session/logout and a controlled-inbox campaign from the Vercel production domain. Vercel preview URLs are different origins and are not allowed to use the production API by default; keep production API access restricted to the exact configured frontend origin.
+
+The full `docker-compose.production.yml` remains available if both frontend and backend are served by Docker/Caddy on the same host instead of Vercel.
+
 ## Frontend integration
 
 The separately maintained frontend uses the existing `VITE_API_URL` variable and defaults to:
