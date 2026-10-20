@@ -7,7 +7,8 @@ Core workflows:
 - Owner-scoped audience and contact management, including subscription preferences.
 - Campaign creation, editing, scheduling and execution.
 - Reusable, owner-scoped campaign templates with create/edit/delete workflows.
-- Durable delivery records; actual SMTP sending runs in the background worker. The worker rechecks subscription status immediately before sending, and campaign reports distinguish skipped recipients from sent/failed deliveries.
+- Durable delivery records; actual SMTP sending runs in the background worker. The worker atomically claims only campaigns that remain scheduled and due, rechecks subscription status immediately before sending, and reports skipped recipients separately from sent/failed deliveries.
+- Campaign reports aggregate delivery attempts in PostgreSQL rather than loading every delivery into the API process. The total is cumulative across retries; latest_run_status identifies the latest run separately.
 - Open tracking through a real 1x1 GIF endpoint, click tracking restricted to links present in that specific campaign delivery, and aggregate reporting from persisted delivery/event records.
 - Database-backed 15-second campaign worker plus Redis-backed shared authentication rate limits. Redis is included in Compose; Celery, RabbitMQ and Kafka are not required.
 - PostgreSQL relational constraints, indexes and Alembic migrations.
@@ -121,7 +122,7 @@ uvicorn app.main:app --reload
 
 ### Redis / queues / workers
 
-Redis is used for shared atomic login/registration rate-limit counters and runs privately in Compose with password authentication and a persistent data volume. It is not the campaign job queue: PostgreSQL stores durable campaign runs and deliveries. The separate `app.worker` process checks scheduled campaigns every 15 seconds and sends queued email through SMTP, recording delivery outcomes in PostgreSQL. Celery, RabbitMQ and Kafka are not required.
+Redis is used for shared atomic login/registration rate-limit counters and runs privately in Compose with password authentication and a persistent data volume. It is not the campaign job queue: PostgreSQL stores durable campaign runs and deliveries. The separate `app.worker` process checks scheduled campaigns every 15 seconds and sends queued email through SMTP, recording delivery outcomes in PostgreSQL. Its atomic claim rechecks the persisted campaign state and due time, so an edit that changes a campaign back to draft prevents a stale scheduler selection from executing it. Celery, RabbitMQ and Kafka are not required.
 
 ### SMTP
 
