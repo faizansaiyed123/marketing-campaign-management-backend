@@ -49,9 +49,10 @@ def test_campaign_flow_tracking_click_and_unsubscribe(client):
         token=delivery.tracking_token
 
     assert client.get(f"/track/{token}/open").status_code==200
-    click_response = client.get(f"/track/{token}/click", params={"url": "https://example.com/path"}, follow_redirects=False)
+    click_response = client.get(f"/track/{token}/click", params={"url": "https://example.com/path?q=1"}, follow_redirects=False)
     assert click_response.status_code == 307
     assert click_response.headers["cache-control"] == "no-store"
+    assert client.get(f"/track/{token}/click", params={"url": "https://attacker.example/phishing"}, follow_redirects=False).status_code == 400
     from app.services.campaigns import build_tracked_html
     with Session(engine) as db:
         delivery=db.scalar(select(Delivery))
@@ -745,7 +746,7 @@ def test_tracking_is_idempotent_and_invalid_token_is_rejected(client):
     a=client.post("/api/v1/audiences",json={"name":"Tracking"}).json()
     client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"tracking-contact@example.com"})
     camp=client.post("/api/v1/campaigns",json={
-        "name":"Tracking","audience_id":a["id"],"subject":"x","body_html":"x"
+        "name":"Tracking","audience_id":a["id"],"subject":"x","body_html":'<a href="https://example.com">x</a>'
     }).json()
     report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
     assert report["summary"]["queued"]==1
@@ -760,6 +761,7 @@ def test_tracking_is_idempotent_and_invalid_token_is_rejected(client):
     assert client.get(f"/track/{token}/open").status_code==200
     assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
     assert client.get(f"/track/{token}/click",params={"url":"https://example.com"},follow_redirects=False).status_code==307
+    assert client.get(f"/track/{token}/click",params={"url":"https://not-in-campaign.example"},follow_redirects=False).status_code==400
     with Session(engine) as db:
         assert db.scalar(select(__import__("sqlalchemy").func.count(CampaignEvent.id)).where(
             CampaignEvent.delivery_id==delivery.id

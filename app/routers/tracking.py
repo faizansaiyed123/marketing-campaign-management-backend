@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import CampaignEvent, Delivery
+from ..services.campaigns import extract_http_links, render_personalized_content
 
 router = APIRouter(prefix="/track", tags=["tracking"])
 PIXEL = (
@@ -74,6 +75,16 @@ def click_track(
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HTTPException(400, "Only absolute HTTP(S) links can be tracked")
+
+    delivery = _delivery(tracking_token, db)
+    _, personalized_body = render_personalized_content(
+        delivery.run.campaign.subject,
+        delivery.run.campaign.body_html,
+        delivery.contact,
+    )
+    if url not in extract_http_links(personalized_body):
+        raise HTTPException(400, "The destination is not linked in this campaign delivery")
+
     record(tracking_token, "click", db)
     return RedirectResponse(url=url, status_code=307)
 

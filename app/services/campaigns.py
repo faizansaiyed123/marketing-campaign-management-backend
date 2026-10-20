@@ -93,6 +93,11 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
     db.refresh(run)
     return run
 
+def extract_http_links(body_html: str) -> set[str]:
+    """Return exact absolute HTTP(S) href targets present in campaign HTML."""
+    return {unescape(match.group(3)) for match in LINK_RE.finditer(body_html)}
+
+
 def _rewrite_links(body_html: str, tracking_token: str) -> str:
     base = get_settings().public_base_url.rstrip("/")
 
