@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .core.config import get_settings
 from .db import get_db
-from .routers import analytics, auth, audiences, campaigns, dashboard, tracking
+from .routers import analytics, auth, audiences, campaigns, dashboard, templates, tracking
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="1.0.0")
@@ -39,6 +39,7 @@ app.include_router(auth.router)
 app.include_router(audiences.router)
 app.include_router(campaigns.router)
 app.include_router(dashboard.router)
+app.include_router(templates.router)
 app.include_router(analytics.router)
 app.include_router(tracking.router)
 

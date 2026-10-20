@@ -147,6 +147,64 @@ def test_production_security_rejects_default_database_password():
             database_url="postgresql+psycopg://postgres:postgres@db.example.com:5432/campaigns",
         )
 
+
+def test_template_lifecycle_and_owner_isolation(client):
+    register(client, "template-owner@example.com")
+    created_response = client.post(
+        "/api/v1/templates",
+        json={
+            "name": "Welcome series",
+            "subject": "Welcome, {{first_name}}",
+            "body_html": "<p>Hello {{first_name}}</p>",
+        },
+    )
+    assert created_response.status_code == 201, created_response.text
+    created = created_response.json()
+    assert created["name"] == "Welcome series"
+    assert created["subject"] == "Welcome, {{first_name}}"
+    assert len(created["id"]) == 36
+    assert client.get("/api/v1/templates").json() == [created]
+
+    updated_response = client.patch(
+        f"/api/v1/templates/{created['id']}",
+        json={"subject": "Your welcome note", "body_html": "<p>Welcome</p>"},
+    )
+    assert updated_response.status_code == 200
+    assert updated_response.json()["subject"] == "Your welcome note"
+    assert updated_response.json()["body_html"] == "<p>Welcome</p>"
+
+    invalid_update = client.patch(
+        f"/api/v1/templates/{created['id']}",
+        json={"subject": None},
+    )
+    assert invalid_update.status_code == 422
+
+    client.post("/api/v1/auth/logout")
+    register(client, "another-template-owner@example.com")
+    assert client.get("/api/v1/templates").json() == []
+    assert client.patch(
+        f"/api/v1/templates/{created['id']}", json={"name": "Not yours"}
+    ).status_code == 404
+    assert client.delete(f"/api/v1/templates/{created['id']}").status_code == 404
+
+    other_template = client.post(
+        "/api/v1/templates",
+        json={"name": "Other", "subject": "Subject", "body_html": "<p>Other</p>"},
+    )
+    assert other_template.status_code == 201
+    assert client.delete(f"/api/v1/templates/{other_template.json()['id']}").status_code == 204
+    assert client.get("/api/v1/templates").json() == []
+
+
+def test_template_required_fields_are_validated(client):
+    register(client, "template-validation@example.com")
+    response = client.post(
+        "/api/v1/templates",
+        json={"name": "   ", "subject": "Valid subject", "body_html": "<p>Body</p>"},
+    )
+    assert response.status_code == 422
+
+
 def test_blank_names_are_rejected(client):
     register(client,"blank@example.com")
     assert client.post("/api/v1/audiences",json={"name":"   "}).status_code==422

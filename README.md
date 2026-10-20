@@ -6,6 +6,7 @@ Core workflows:
 - Secure account registration/login/logout using Argon2id passwords and an HttpOnly, SameSite=Strict JWT cookie.
 - Owner-scoped audience and contact management, including subscription preferences.
 - Campaign creation, editing, scheduling and execution.
+- Reusable, owner-scoped campaign templates with create/edit/delete workflows.
 - Durable delivery records with optional standard SMTP delivery.
 - Open tracking through a real 1x1 GIF endpoint and aggregate reporting from persisted delivery/event records.
 - Lightweight 15-second scheduler worker; no Redis/Celery/Kafka is required.

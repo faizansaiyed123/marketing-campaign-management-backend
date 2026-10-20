@@ -39,6 +39,41 @@ class UserResponse(BaseModel):
     email: EmailStr
     name: str
 
+
+class CampaignTemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=140)
+    subject: str = Field(min_length=1, max_length=200)
+    body_html: str = Field(min_length=1, max_length=200_000)
+    _clean_fields = field_validator("name", "subject")(clean_required)
+    _clean_body = field_validator("body_html")(clean_required)
+
+
+class CampaignTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=140)
+    subject: str | None = Field(default=None, min_length=1, max_length=200)
+    body_html: str | None = Field(default=None, min_length=1, max_length=200_000)
+    _clean_fields = field_validator("name", "subject")(
+        lambda value: None if value is None else clean_required(value)
+    )
+    _clean_body = field_validator("body_html")(
+        lambda value: None if value is None else clean_required(value)
+    )
+
+
+class CampaignTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    subject: str
+    body_html: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_template_datetimes(self, value: datetime) -> str:
+        return serialize_datetime(value)
+
+
 class AudienceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     _clean_name = field_validator("name")(clean_required)

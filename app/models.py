@@ -19,6 +19,20 @@ class User(Base):
     created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now_utc)
     audiences: Mapped[list["Audience"]]=relationship(back_populates="owner",cascade="all, delete-orphan")
     campaigns: Mapped[list["Campaign"]]=relationship(back_populates="owner",cascade="all, delete-orphan")
+    templates: Mapped[list["CampaignTemplate"]]=relationship(back_populates="owner",cascade="all, delete-orphan")
+
+
+class CampaignTemplate(Base):
+    __tablename__ = "campaign_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(140), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    owner: Mapped[User] = relationship(back_populates="templates")
 
 class Audience(Base):
     __tablename__="audiences"
