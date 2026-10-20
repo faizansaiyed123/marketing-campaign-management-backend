@@ -7,18 +7,18 @@ Core workflows:
 - Owner-scoped audience and contact management, including subscription preferences.
 - Campaign creation, editing, scheduling and execution.
 - Reusable, owner-scoped campaign templates with create/edit/delete workflows.
-- Durable delivery records with optional standard SMTP delivery.
+- Durable delivery records; actual SMTP sending runs in the background worker.
 - Open tracking through a real 1x1 GIF endpoint and aggregate reporting from persisted delivery/event records.
-- Lightweight 15-second scheduler worker; no Redis/Celery/Kafka is required.
+- Database-backed 15-second campaign worker plus Redis-backed shared authentication rate limits. Redis is included in Compose; Celery, RabbitMQ and Kafka are not required.
 - PostgreSQL relational constraints, indexes and Alembic migrations.
 
-Without SMTP, execution intentionally remains queued and never reports a message as sent.
+Development can run without SMTP; deliveries remain queued until mail is configured. Production startup rejects missing SMTP configuration so a live production API cannot silently accept campaigns it cannot send.
 
 ## Requirements
 
 - Docker Engine/Desktop with Docker Compose v2 for the Docker workflow.
 - Python 3.11+ and pip for the Python-only workflow.
-- SMTP credentials are optional. Without SMTP configuration, campaign deliveries remain queued by design.
+- SMTP is optional only in development/tests. Production requires SMTP host, sender address, TLS, and a matching username/password pair when the provider requires authentication.
 
 ## One-command backend startup
 
@@ -32,11 +32,12 @@ python run.py
 
 - PostgreSQL 16 on port 5432.
 - FastAPI on port 8000, including the existing Alembic migration step before API startup.
-- The existing database-backed scheduler worker, which runs every 15 seconds.
+- Redis 7 (private, password-protected; shared authentication rate-limit storage).
+- The existing database-backed scheduler/SMTP worker, which runs every 15 seconds.
 
 The script waits for the API's `/health` endpoint, which also verifies PostgreSQL connectivity, before reporting the backend as ready. Press `Ctrl+C` to stop the stack; the script runs `docker compose down` for the services it started.
 
-Redis, Celery, RabbitMQ and Kafka are not started because this backend does not require them.
+Redis is started for shared authentication rate-limit counters. Celery, RabbitMQ and Kafka are unnecessary: campaign jobs and delivery state remain durable in PostgreSQL.
 
 For a custom health URL, set `BACKEND_HEALTH_URL` before running the script. The normal development value is `http://127.0.0.1:8000/health`.
 
@@ -51,11 +52,12 @@ docker compose up --build
 This starts:
 - PostgreSQL 16 on port 5432.
 - FastAPI on port 8000.
-- The existing scheduler worker that checks for due/queued campaigns every 15 seconds.
+- Redis 7, privately available to the API and worker for shared rate-limit counters.
+- The existing scheduler/SMTP worker that checks for due/queued campaigns every 15 seconds.
 
 The API container waits for PostgreSQL health before starting and applies Alembic migrations before launching FastAPI. The worker starts after the API health check succeeds.
 
-For local development, Compose binds the database and API ports to loopback only. Do not expose the raw HTTP API port directly to the public internet. In production, route public HTTPS traffic through a TLS-terminating reverse proxy or managed HTTPS load balancer, and keep PostgreSQL private. The API container runs as a non-root user. Login and registration have process-local IP rate limits (10 login attempts per minute and 5 registrations per hour). These counters reset on process restart and are not shared across replicas; if you run multiple API workers or replicas, add a shared gateway/distributed rate limiter before public exposure. The included Caddyfile is a TLS reverse proxy, not a distributed rate limiter.
+For local development, Compose binds the database and API host ports to loopback only; Redis has no published host port. Do not expose the raw HTTP API port or PostgreSQL directly to the public internet. Production login and registration limits use atomic Redis-backed rolling windows shared across API workers/replicas: 10 login attempts per source IP per minute and 5 registrations per source IP per hour. If Redis is unavailable or its URL is missing, authentication fails closed with HTTP 503 rather than bypassing the protection. Caddy overwrites X-Forwarded-For with the client address it sees; Uvicorn trusts only the configured Docker proxy subnet. The included Caddyfile terminates TLS and routes traffic, while application rate limiting is handled by Redis.
 
 The API health endpoint is:
 
@@ -81,6 +83,8 @@ Important variables include:
 - `COOKIE_SECURE`
 - `COOKIE_NAME`
 - `PUBLIC_BASE_URL`
+- `REDIS_PASSWORD` and (for non-Compose runs) `REDIS_URL`
+- `FORWARDED_ALLOW_IPS` (change only if the trusted Docker proxy network uses another subnet)
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -90,7 +94,7 @@ Important variables include:
 
 Do not commit real secrets.
 
-For non-development environments, use a unique randomly generated `JWT_SECRET_KEY`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and HTTPS `FRONTEND_ORIGIN`. Production startup rejects common secret placeholders, the development PostgreSQL password, and enforces these cookie/HTTPS requirements. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker. Because the session cookie is `SameSite=Strict`, deploy the frontend and API on HTTPS custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`). Unrelated default provider domains may cause browsers to block the session cookie.
+For non-development environments, use unique random `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, and `REDIS_PASSWORD`, `COOKIE_SECURE=true`, `COOKIE_NAME=__Host-campaign_session`, HTTPS `PUBLIC_BASE_URL` and `FRONTEND_ORIGIN`. Production startup rejects common JWT/database placeholders, weak or missing Redis credentials, missing SMTP host/sender, mismatched SMTP login credentials, and non-TLS SMTP settings. Never deploy with the development-only Redis password. Keep Redis private; Compose does not publish its port. Set a unique `POSTGRES_PASSWORD` for Docker Compose deployments; the Python-only workflow uses the credentials in `DATABASE_URL`. Docker Compose passes `COOKIE_NAME` to both the API and worker. Because the session cookie is `SameSite=Strict`, deploy the frontend and API on HTTPS custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`). Unrelated default provider domains may cause browsers to block the session cookie.
 
 ### Database and migrations
 
@@ -114,13 +118,11 @@ uvicorn app.main:app --reload
 
 ### Redis / queues / workers
 
-Redis, Celery, RabbitMQ and Kafka are not part of this application. The existing `app.worker` process is a lightweight database-backed scheduler/worker and is included as a separate Compose service.
+Redis is used for shared atomic login/registration rate-limit counters and runs privately in Compose with password authentication and a persistent data volume. It is not the campaign job queue: PostgreSQL stores durable campaign runs and deliveries. The separate `app.worker` process checks scheduled campaigns every 15 seconds and sends queued email through SMTP, recording delivery outcomes in PostgreSQL. Celery, RabbitMQ and Kafka are not required.
 
 ### SMTP
 
-SMTP is optional. When `SMTP_HOST` and `SMTP_FROM_EMAIL` are not configured, execution creates durable queued deliveries but does not mark them as sent.
-
-When SMTP is configured, the existing delivery service sends messages through the configured SMTP server and records sent/failed delivery state.
+SMTP may be omitted in development; in that case campaign execution creates durable queued deliveries and never marks them sent. Production settings require `SMTP_HOST`, `SMTP_FROM_EMAIL`, TLS, and matching `SMTP_USERNAME`/`SMTP_PASSWORD` when authentication is used. Configure these values for your provider in the server's untracked `.env`. The API endpoint queues work and returns HTTP 202 without sending each email inside the request. The background worker sends messages and records sent/failed outcomes. A configured-but-invalid provider credential can only be confirmed by a real SMTP connection/delivery test.
 
 ### Stop
 
@@ -160,6 +162,13 @@ This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy servi
    POSTGRES_DB=campaigns
    POSTGRES_PASSWORD=<output of openssl rand -hex 24>
    JWT_SECRET_KEY=<output of openssl rand -hex 32>
+   REDIS_PASSWORD=<output of openssl rand -hex 24>
+   SMTP_HOST=smtp.your-provider.example
+   SMTP_PORT=587
+   SMTP_USERNAME=<provider username, if required>
+   SMTP_PASSWORD=<provider password or app password, if required>
+   SMTP_FROM_EMAIL=<verified sender address>
+   SMTP_USE_TLS=true
    FRONTEND_DOMAIN=app.example.com
    API_DOMAIN=api.example.com
    FRONTEND_ORIGIN=https://app.example.com
@@ -184,7 +193,7 @@ This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy servi
    docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
    ```
 
-6. Verify `https://api.example.com/health`, open `https://app.example.com`, then test registration/login/logout, template owner isolation, audience/contact changes, and campaign lifecycle. SMTP must be configured and verified separately before claiming real email delivery. Until SMTP is configured, queued deliveries are expected.
+6. Verify `https://api.example.com/health`, open `https://app.example.com`, then test registration/login/logout, template owner isolation, audience/contact changes, campaign scheduling, and tracking. Send a real test campaign to a controlled inbox and confirm the provider accepts it and the report records it as sent. Production startup requires SMTP settings, but valid credentials, sender verification, DNS email authentication (SPF/DKIM/DMARC), provider acceptance, and inbox placement must be validated with your provider.
 
 The production overlay publishes only Caddy's 80/443 ports publicly. It retains the named PostgreSQL volume and Caddy certificate/configuration volumes across container recreation. Back up PostgreSQL and its volume separately; Docker volumes alone are not off-host backups. Use `docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f api worker caddy` to inspect logs.
 
