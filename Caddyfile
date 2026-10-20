@@ -1,0 +1,10 @@
+{$FRONTEND_DOMAIN} {
+    encode zstd gzip
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy campaign-frontend:8080
+}
+
+{$API_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy campaign-api:8000
+}

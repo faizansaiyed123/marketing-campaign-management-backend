@@ -140,6 +140,56 @@ docker compose down -v
 docker compose up --build
 ```
 
+## Single-host production deployment (Caddy + HTTPS)
+
+The optional `docker-compose.production.yml` overlay adds Caddy as the public TLS-terminating reverse proxy. It serves the frontend at `FRONTEND_DOMAIN` and routes the API at `API_DOMAIN`. Caddy obtains and renews certificates automatically when both DNS records point to this server and inbound ports 80 and 443 are reachable.
+
+This setup uses Docker Compose, Caddy, and PostgreSQL without a paid proxy service. It assumes a Linux server/VPS with Docker Engine and Compose v2, public DNS control, and a persistent disk. It does **not** provision the server, DNS, firewall, or SMTP account for you.
+
+1. Create the shared Docker network once per server:
+
+   ```bash
+   docker network create campaign_proxy
+   ```
+
+2. In the backend repository, copy `.env.example` to `.env` and set these production values. Generate the secrets on the server; never commit `.env`:
+
+   ```env
+   ENVIRONMENT=production
+   POSTGRES_USER=campaign_app
+   POSTGRES_DB=campaigns
+   POSTGRES_PASSWORD=<output of openssl rand -hex 24>
+   JWT_SECRET_KEY=<output of openssl rand -hex 32>
+   FRONTEND_DOMAIN=app.example.com
+   API_DOMAIN=api.example.com
+   FRONTEND_ORIGIN=https://app.example.com
+   PUBLIC_BASE_URL=https://api.example.com
+   COOKIE_SECURE=true
+   COOKIE_NAME=__Host-campaign_session
+   ```
+
+   Use your real domains, not the example ones. The example hexadecimal database password avoids URL-reserved characters in the Compose-generated SQLAlchemy URL. Choose the database password before the first start; changing only the environment variable later does not rotate the password inside an already initialized PostgreSQL volume.
+
+3. Create the DNS A/AAAA records for both domains pointing at the server's public address. Allow inbound TCP 80/443 (and optionally UDP 443 for HTTP/3) and administrative SSH only. Keep PostgreSQL and the API's direct host ports bound to loopback.
+
+4. Start the backend API, worker, database, and Caddy proxy:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
+   ```
+
+5. In the frontend repository, create its own untracked `.env` containing `VITE_API_URL=https://api.example.com`, then start its production overlay:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
+   ```
+
+6. Verify `https://api.example.com/health`, open `https://app.example.com`, then test registration/login/logout, template owner isolation, audience/contact changes, and campaign lifecycle. SMTP must be configured and verified separately before claiming real email delivery. Until SMTP is configured, queued deliveries are expected.
+
+The production overlay publishes only Caddy's 80/443 ports publicly. It retains the named PostgreSQL volume and Caddy certificate/configuration volumes across container recreation. Back up PostgreSQL and its volume separately; Docker volumes alone are not off-host backups. Use `docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f api worker caddy` to inspect logs.
+
+For a managed hosting provider or a pre-existing reverse proxy, use that platform's HTTPS and persistent-database facilities instead; this Caddy overlay is optional.
+
 ## Frontend integration
 
 The separately maintained frontend uses the existing `VITE_API_URL` variable and defaults to:

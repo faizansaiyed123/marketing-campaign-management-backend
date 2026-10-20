@@ -1,0 +1,36 @@
+services:
+  api:
+    networks:
+      default: {}
+      public_proxy:
+        aliases:
+          - campaign-api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      FRONTEND_DOMAIN: "${FRONTEND_DOMAIN:?Set FRONTEND_DOMAIN in backend .env}"
+      API_DOMAIN: "${API_DOMAIN:?Set API_DOMAIN in backend .env}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - public_proxy
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  public_proxy:
+    name: campaign_proxy
+    external: true
