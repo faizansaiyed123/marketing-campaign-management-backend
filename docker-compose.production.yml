@@ -1,10 +1,55 @@
 services:
+  postgres:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the backend .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the backend .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the backend .env}
+
+  redis:
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in the backend .env}"]
+
   api:
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.30.240.2,127.0.0.1}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate and set JWT_SECRET_KEY}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN to the public frontend HTTPS origin}
+      COOKIE_SECURE: "true"
+      COOKIE_NAME: ${COOKIE_NAME:?Set COOKIE_NAME=__Host-campaign_session}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the public API HTTPS origin}
+      SMTP_HOST: ${SMTP_HOST:?Set real SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?Set verified SMTP_FROM_EMAIL}
+      SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
+      SMTP_USE_SSL: "${SMTP_USE_SSL:-false}"
+
     networks:
       default: {}
       public_proxy:
         aliases:
           - campaign-api
+
+  worker:
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate and set JWT_SECRET_KEY}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN to the public frontend HTTPS origin}
+      COOKIE_SECURE: "true"
+      COOKIE_NAME: ${COOKIE_NAME:?Set COOKIE_NAME=__Host-campaign_session}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the public API HTTPS origin}
+      SMTP_HOST: ${SMTP_HOST:?Set real SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?Set verified SMTP_FROM_EMAIL}
+      SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
+      SMTP_USE_SSL: "${SMTP_USE_SSL:-false}"
 
   caddy:
     image: caddy:2-alpine
