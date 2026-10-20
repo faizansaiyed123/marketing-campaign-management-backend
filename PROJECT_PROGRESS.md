@@ -1,57 +1,44 @@
 # Project Progress — Marketing Campaign Management Backend
 
 ## Status — October 20, 2026
-The backend main branch now includes the production-readiness work and a working developer launcher whose service list matches the current Compose stack.
-- Distributed authentication rate limits use atomic Redis Lua rolling windows, are shared across workers/replicas, and fail closed when Redis is unavailable.
-- The health endpoint checks PostgreSQL and the shared Redis limiter in production; it returns 503 when either required service is unhealthy.
-- Cookie-authenticated mutations reject foreign Origin and cross-site Fetch Metadata requests, alongside credentialed CORS.
-- Production configuration validates database/JWT/Redis credentials, HTTPS origins, the secure __Host- cookie policy, SMTP sender syntax/placeholder checks, and mutually exclusive certificate-verified STARTTLS/implicit TLS modes.
-- Full-stack Caddy and API-only Caddy production overlays require production configuration before startup. The API-only overlay is for an existing Vercel frontend; the full overlay serves both frontend and backend in Docker.
-- Campaign execution persists queued delivery records and returns HTTP 202. A separate worker sends campaign messages, supports contact merge fields, preserves links/unsubscribe information in HTML and plain text, and records SMTP refusal/failure outcomes.
-- Click tracking only redirects to links that actually exist in the specific personalized campaign delivery; unlisted destinations are rejected.
-- Backup/restore scripts validate PostgreSQL archives, protect dump file permissions, support retention/off-host copy, and restore into a separate database.
-- The developer launcher python run.py now accurately describes PostgreSQL + Redis + API + worker; CI compiles the launcher as well as the app/tests.
-- Both production Compose routes and both Caddy files have CI validation. No live deployment is claimed.
+The backend production-readiness changes are committed on `main`; the current application changes and PostgreSQL schema migration passed CI.
+- Authentication rate limits are atomic Redis Lua rolling windows shared across API workers/replicas; missing Redis fails closed, and production readiness checks PostgreSQL plus Redis.
+- Cookie-authenticated mutations reject foreign Origin/cross-site Fetch Metadata requests, alongside credentialed CORS.
+- Production startup validates strong DB/JWT/Redis settings, HTTPS origins, secure `__Host-` cookies, SMTP sender syntax and certificate-verified TLS settings. Both Docker deployment overlays require production config before startup.
+- Campaign execution persists durable delivery rows and returns HTTP 202. The worker sends through SMTP, handles refused recipients accurately, and safely records sent/failed state.
+- The worker rechecks each contact's subscription state under a database row lock immediately before sending. A contact who unsubscribes after the campaign is queued but before the send is skipped—not sent or counted as an SMTP failure.
+- Campaign delivery summaries expose skipped counts; Alembic migration `0004_delivery_skipped_count` stores the per-run skipped total.
+- Merge fields `{{first_name}}`, `{{last_name}}`, `{{full_name}}`, and `{{email}}` are escaped into HTML and sanitized for email subjects. Plain-text and HTML alternatives include tracked links/unsubscribe instructions.
+- Click tracking only redirects to URLs actually included in the personalized campaign body.
+- PostgreSQL backup/restore scripts validate archives and restore to a separate database; off-host copying is supported with rclone.
+- The developer launcher reports the actual Compose services: PostgreSQL, Redis, API, and worker.
 
 ## Repositories and verification
 - Backend: https://github.com/faizansaiyed123/marketing-campaign-management-backend
 - Frontend: https://github.com/faizansaiyed123/marketing-campaign-management-frontend
-- Backend code/config revision verified by passing CI before this documentation-only update: 902ed0b8389c79c4e9bd1ee55b5b7db1bf522521.
-- Backend CI: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39379182626
-- Frontend Vercel build-guard and integration CI: https://github.com/faizansaiyed123/marketing-campaign-management-frontend/actions/runs/39378747582
-- Frontend progress/Vercel documentation CI: https://github.com/faizansaiyed123/marketing-campaign-management-frontend/actions/runs/39378962904
-- Backend CI runs Python compilation including run.py, script syntax checks, PostgreSQL migrations and model parity, PostgreSQL-backed API tests, a real Redis rate-limit integration test, complete/incomplete validation for both production Compose overlays, both Caddyfile validations, API Docker image build, and non-root runtime verification.
+- Backend application/schema revision verified by CI: `99358fc3b282354ac586f536d458134ad0e30eff`.
+- Backend CI run for that revision: https://github.com/faizansaiyed123/marketing-campaign-management-backend/actions/runs/39386023991
+- Frontend unsubscribe/report UI integration CI: https://github.com/faizansaiyed123/marketing-campaign-management-frontend/actions/runs/39386307829
+- Backend CI includes Python compilation, operational-script syntax, PostgreSQL migration and model parity checks, PostgreSQL-backed API tests, real Redis rate-limit tests, production Compose validation, both Caddyfile validations, API image build, and non-root runtime verification.
 
-## Application and delivery behavior
-- FastAPI, SQLAlchemy, PostgreSQL, Alembic, Argon2 password hashing, JWT-backed HttpOnly session cookie, owner-isolated audiences/contacts/templates/campaigns, reports, tracking and analytics.
-- PostgreSQL stores durable campaign runs/deliveries. Redis is used for shared authentication limits, not as the campaign queue.
-- The scheduler/SMTP worker polls every 15 seconds, finds due campaigns, and processes queued runs.
-- Supported merge fields: {{first_name}}, {{last_name}}, {{full_name}}, and {{email}}. Substitutions in HTML are escaped and subject control characters are stripped.
-- Both email alternatives retain tracked link destinations and an unsubscribe URL. The app recognizes SMTP recipient refusals and connection/send exceptions as delivery failures instead of reporting those emails as sent.
-- Open and click events are stored; clicks can only redirect to a target present in the recipient's campaign content. Unsubscribe uses a confirmation flow and supports one-click POST.
+## Application and delivery design
+- FastAPI, SQLAlchemy, PostgreSQL, Alembic, Argon2 password hashes, JWT-backed HttpOnly session cookie, owner-isolated users/audiences/contacts/templates/campaigns, tracking and analytics.
+- PostgreSQL stores campaign runs and delivery attempts; Redis is shared rate-limit storage, not a campaign queue.
+- The worker checks scheduled campaigns every 15 seconds and uses row locks to coordinate delivery processing.
+- Report counts are campaign-wide delivery-attempt totals across retries; `latest_run_status` separately describes the most recent run.
+- Skipped contacts are displayed separately from sent/failed messages. Retry runs only retry failed deliveries and do not re-send contacts already successfully sent.
+- A genuine SMTP provider/account/verified sender and controlled-inbox test are still required to verify external email delivery. CI uses a fake SMTP server by design.
 
-## Production security/configuration
-- Login: 10 attempts per source IP per minute. Registration: 5 per source IP per hour.
-- Redis is private/password-protected and is not published to the host.
-- Caddy overwrites X-Forwarded-For; Uvicorn trusts only Caddy's fixed IP 172.30.240.2 and loopback by default. If the private network changes, update the Caddy static address and FORWARDED_ALLOW_IPS together.
-- Production Compose refuses missing database/Redis/JWT/origin/domain/SMTP settings; runtime validation rejects obvious placeholders, insecure origins, malformed sender addresses, and invalid SMTP TLS combinations.
-- Keep real secrets in untracked deployment .env files. Actual SMTP provider authentication, sender verification and inbox delivery require a controlled-inbox send after deployment; no credentials are invented or committed.
+## Production security
+- Login limit: 10 requests per source IP per minute; registration limit: 5 per IP per hour.
+- Redis is private and password-protected, with no published host port.
+- Caddy overwrites `X-Forwarded-For`; Uvicorn trusts only Caddy's fixed private IP `172.30.240.2` and loopback by default.
+- Production env files are untracked; no secrets are committed. Full-stack Caddy and Vercel-frontend/API-only Caddy are separate deployment choices and must not both publish host ports 80/443 on the same server.
+- Keep the API and frontend on HTTPS custom subdomains under the same registrable domain for the strict session cookie; set the exact frontend origin in backend configuration.
+- `docker-compose.production.yml` serves frontend + API on one server; `docker-compose.api-production.yml` serves API only for an existing Vercel frontend.
 
-## Deployment options
-1. All-Docker frontend and backend: docker-compose.production.yml plus Caddyfile.
-2. Existing Vercel frontend, VPS backend: docker-compose.api-production.yml plus Caddyfile.api-only.
-- Vercel uses the frontend repository's vercel.json and npm run build:vercel; the production build refuses missing, insecure, localhost, or reserved example API URLs.
-- The API-only stack uses the same public API subdomain and cookie/security config. Use a custom frontend HTTPS subdomain and API HTTPS sibling under the same registrable domain.
-- The shared Docker network example uses 172.30.240.0/24, gateway 172.30.240.1, and Caddy IP 172.30.240.2; choose an unused subnet that doesn't overlap a LAN/VPN.
-- README deployment commands and post-deploy smoke checks are available. Production .env files must never be committed.
-
-## Backups and recovery
-- scripts/backup_postgres.sh creates a custom-format PostgreSQL dump, verifies the archive, restricts local permissions, prunes retention, and optionally copies through rclone.
-- scripts/restore_postgres.sh validates an archive and restores to a separate database; it refuses to overwrite the configured live database.
-- Script syntax and mocked safe-workflow tests pass. A real deployment still needs an actual off-host backup and restore test before its recoverability can be considered proven.
-
-## Branch review
-Previously compared main, development, and chore/startup-docker-support recursively. At that checkpoint both non-main branches were behind main with zero commits ahead. No unrelated branches were merged wholesale.
-
-## Live deployment status
-The latest source code, database migrations, API tests, container build, production Compose configurations and Caddy configurations are CI-verified. No live production deployment or real email delivery was performed in this session. Going live still needs actual DNS/custom domains, a Linux host with public TCP 80/443, production-only secrets, a verified SMTP provider/sender, a controlled-inbox send, and a tested backup restore. The Vercel dashboard project itself is not accessible through the repository connection, so its domain and environment variable must be confirmed in the existing dashboard.
+## Backups and live deployment
+- `scripts/backup_postgres.sh` produces a verified custom-format dump with owner-only file permissions and retention; it can copy to an off-host remote.
+- `scripts/restore_postgres.sh` validates and restores into a separate database, refuses to overwrite the configured live database, and keeps the original unchanged if restore fails.
+- Scripts and mocked safe-workflow tests pass CI. A production backup is not proven recoverable until a real archive has successfully been restored.
+- Code and deployment configuration are CI-checked; no live production domain, server, SMTP provider, or real inbox delivery was supplied or verified. Actual launch still needs those external resources and post-deployment smoke tests.
