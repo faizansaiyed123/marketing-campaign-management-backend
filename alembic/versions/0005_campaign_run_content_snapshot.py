@@ -3,7 +3,7 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0005_campaign_run_content_snapshot"
+revision = "0005_run_content_snapshot"
 down_revision = "0004_delivery_skipped_count"
 branch_labels = None
 depends_on = None
