@@ -1,6 +1,17 @@
 def register(client,email,name="User"):
     r=client.post("/api/v1/auth/register",json={"email":email,"name":name,"password":"strong-password-123"}); assert r.status_code==201,r.text
 
+
+def run_worker_with_test_database(monkeypatch, settings):
+    """Run the real worker loop against the API test database."""
+    from sqlalchemy.orm import Session
+    from tests.conftest import engine
+    import app.worker as worker
+
+    monkeypatch.setattr(worker, "SessionLocal", lambda: Session(engine))
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    return worker.process_due_campaigns()
+
 def test_health(client):
     response = client.get("/health")
     assert response.json() == {"status": "ok"}
@@ -149,13 +160,62 @@ def test_production_security_rejects_default_database_password():
 
 
 
+def test_production_requires_shared_rate_limits_and_working_mail_configuration():
+    import pytest
+    from app.core.config import Settings
+
+    valid = {
+        "environment": "production",
+        "jwt_secret_key": "production-secret-value-that-is-at-least-32-bytes",
+        "cookie_secure": True,
+        "cookie_name": "__Host-campaign_session",
+        "frontend_origin": "https://app.example.com",
+        "public_base_url": "https://api.example.com",
+        "database_url": "postgresql+psycopg://campaign_app:db-random-secret-3a7bed038f@db.example.com:5432/campaigns",
+        "redis_url": "redis://:4c09f1c8aab8d14e905e1f1f7f03e6c1a55bb8be1f62d540@redis:6379/0",
+        "smtp_host": "smtp.example.com",
+        "smtp_from_email": "sender@example.com",
+        "smtp_use_tls": True,
+    }
+    Settings(**valid)
+
+    with pytest.raises(ValueError, match="REDIS_URL must point to shared Redis"):
+        Settings(**{**valid, "redis_url": None})
+    with pytest.raises(ValueError, match="SMTP_HOST and SMTP_FROM_EMAIL are required"):
+        Settings(**{**valid, "smtp_host": None})
+
+
 def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
-    from collections import OrderedDict
+    from math import ceil
     from types import SimpleNamespace
     from app.core import rate_limit as rate_limit_module
 
-    monkeypatch.setattr(rate_limit_module, "get_settings", lambda: SimpleNamespace(environment="production"))
-    monkeypatch.setattr(rate_limit_module, "_BUCKETS", OrderedDict())
+    class FakeRedis:
+        def __init__(self):
+            self.rows = {}
+
+        def eval(self, script, number_of_keys, key, now_ms, window_ms, max_requests, member):
+            assert number_of_keys == 1
+            entries = [item for item in self.rows.get(key, []) if item[0] > int(now_ms) - int(window_ms)]
+            entries.sort(key=lambda item: item[0])
+            if len(entries) >= int(max_requests):
+                retry_ms = entries[0][0] + int(window_ms) - int(now_ms)
+                self.rows[key] = entries
+                return [0, max(1, ceil(retry_ms / 1000))]
+            entries.append((int(now_ms), member))
+            self.rows[key] = entries
+            return [1, 0]
+
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(
+        rate_limit_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            environment="production",
+            redis_url="redis://:test-secret-password-that-is-long-enough@redis:6379/0",
+        ),
+    )
+    monkeypatch.setattr(rate_limit_module, "_get_redis_client", lambda url: fake_redis)
 
     for _ in range(10):
         response = client.post(
@@ -193,6 +253,34 @@ def test_auth_endpoints_are_rate_limited_in_production(monkeypatch, client):
     )
     assert blocked_register.status_code == 429
     assert int(blocked_register.headers["retry-after"]) >= 1
+
+
+def test_authentication_fails_closed_when_shared_limiter_is_unavailable(monkeypatch, client):
+    from types import SimpleNamespace
+    from redis.exceptions import RedisConnectionError
+    from app.core import rate_limit as rate_limit_module
+
+    class UnavailableRedis:
+        def eval(self, *args, **kwargs):
+            raise RedisConnectionError("test-only Redis outage")
+
+    monkeypatch.setattr(
+        rate_limit_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            environment="production",
+            redis_url="redis://:test-secret-password-that-is-long-enough@redis:6379/0",
+        ),
+    )
+    monkeypatch.setattr(rate_limit_module, "_get_redis_client", lambda url: UnavailableRedis())
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "incorrect-password"},
+    )
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "5"
+
 
 def test_template_lifecycle_and_owner_isolation(client):
     register(client, "template-owner@example.com")
@@ -278,12 +366,16 @@ def test_smtp_success_sends_and_tracks(client,monkeypatch):
         def quit(self): pass
 
     monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
-    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+    settings=SimpleNamespace(
         smtp_host="smtp.example",smtp_port=587,smtp_username="user",smtp_password="pass",
         smtp_from_email="sender@example.com",smtp_use_tls=True,public_base_url="http://localhost:8000",
-    ))
+    )
+    monkeypatch.setattr(service,"get_settings",lambda:settings)
 
-    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert queued.status_code == 202 and queued.json()["summary"]["queued"] == 1
+    run_worker_with_test_database(monkeypatch, settings)
+    report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert report["latest_run_status"]=="sent"
     assert report["summary"]["sent"]==1
     assert report["campaign"]["status"]=="sent"
@@ -312,12 +404,16 @@ def test_smtp_sends_multiple_recipients(client,monkeypatch):
         def send_message(self,message): sent.append(message)
         def quit(self): pass
     monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
-    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+    settings=SimpleNamespace(
         smtp_host="smtp.example",smtp_port=587,smtp_username=None,smtp_password=None,
         smtp_from_email="sender@example.com",smtp_use_tls=True,public_base_url="http://localhost:8000",
-    ))
+    )
+    monkeypatch.setattr(service,"get_settings",lambda:settings)
 
-    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert report["summary"]["sent"]==2
     assert report["latest_run_status"]=="sent"
     assert len(sent)==2
@@ -336,12 +432,16 @@ def test_smtp_failure_marks_run_failed(client,monkeypatch):
         def __init__(self,*args,**kwargs):
             raise OSError("smtp unavailable")
     monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=BrokenSMTP))
-    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+    settings=SimpleNamespace(
         smtp_host="smtp.example",smtp_port=587,smtp_username=None,smtp_password=None,
         smtp_from_email="sender@example.com",smtp_use_tls=True,public_base_url="http://localhost:8000",
-    ))
+    )
+    monkeypatch.setattr(service,"get_settings",lambda:settings)
 
-    report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert report["summary"]["failed"]==1 and report["latest_run_status"]=="failed"
 
 def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monkeypatch):
@@ -367,18 +467,25 @@ def test_retry_partial_campaign_does_not_resend_successful_contacts(client,monke
         def quit(self): pass
 
     monkeypatch.setattr(service,"smtplib",SimpleNamespace(SMTP=FakeSMTP))
-    monkeypatch.setattr(service,"get_settings",lambda:SimpleNamespace(
+    settings=SimpleNamespace(
         smtp_host="smtp.example",smtp_port=587,smtp_username=None,smtp_password=None,
         smtp_from_email="sender@example.com",smtp_use_tls=False,public_base_url="http://localhost:8000"
-    ))
+    )
+    monkeypatch.setattr(service,"get_settings",lambda:settings)
 
-    first_report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    first_queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert first_queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    first_report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert first_report["summary"]["sent"]==1
     assert first_report["summary"]["failed"]==1
     assert first_report["latest_run_status"]=="partial"
 
     state["attempt"]=1
-    second_report=client.post(f"/api/v1/campaigns/{camp['id']}/execute").json()
+    second_queued=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
+    assert second_queued.status_code == 202
+    run_worker_with_test_database(monkeypatch, settings)
+    second_report=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert second_report["summary"]["sent"]==2
     assert second_report["summary"]["failed"]==1
     assert second_report["latest_run_status"]=="sent"
@@ -425,7 +532,7 @@ def test_execution_is_single_use_while_queued(client):
     second=client.post(f"/api/v1/campaigns/{camp['id']}/execute")
     assert second.status_code==409
 
-def test_scheduled_campaign_is_queued_by_worker(client):
+def test_scheduled_campaign_is_queued_by_worker(client, monkeypatch):
     register(client,"worker@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Worker"}).json()
     client.post(f"/api/v1/audiences/{a['id']}/contacts",json={"email":"worker-contact@example.com"})
@@ -442,8 +549,11 @@ def test_scheduled_campaign_is_queued_by_worker(client):
         row=db.get(Campaign,camp["id"])
         row.scheduled_at=datetime.now(timezone.utc)
         db.commit()
-    from app.worker import process_due_campaigns
-    assert process_due_campaigns()>=1
+    from types import SimpleNamespace
+    import app.worker as worker
+    monkeypatch.setattr(worker, "SessionLocal", lambda: Session(engine))
+    monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(smtp_host=None, smtp_from_email=None))
+    assert worker.process_due_campaigns() >= 1
     data=client.get(f"/api/v1/campaigns/{camp['id']}/report").json()
     assert data["campaign"]["status"]=="queued"
     assert data["latest_run_status"]=="queued"
