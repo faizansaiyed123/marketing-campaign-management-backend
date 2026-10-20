@@ -94,6 +94,38 @@ def test_empty_audience_run_completes(client):
     assert report["summary"]["total"]==0 and report["latest_run_status"]=="completed"
 
 
+
+def test_completed_empty_campaign_can_execute_after_contacts_are_added(client):
+    register(client, "empty-then-populated@example.com")
+    audience = client.post("/api/v1/audiences", json={"name": "Empty then populated"}).json()
+    campaign = client.post(
+        "/api/v1/campaigns",
+        json={
+            "name": "Empty run recovery",
+            "audience_id": audience["id"],
+            "subject": "Hello",
+            "body_html": "<p>Hello</p>",
+        },
+    ).json()
+
+    first = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert first.status_code == 202
+    assert first.json()["latest_run_status"] == "completed"
+    assert first.json()["summary"]["total"] == 0
+
+    contact = client.post(
+        f"/api/v1/audiences/{audience['id']}/contacts",
+        json={"email": "added-later@example.com"},
+    )
+    assert contact.status_code == 201
+
+    second = client.post(f"/api/v1/campaigns/{campaign['id']}/execute")
+    assert second.status_code == 202, second.text
+    assert second.json()["latest_run_status"] == "queued"
+    assert second.json()["summary"]["total"] == 1
+    assert second.json()["summary"]["queued"] == 1
+
+
 def test_naive_schedule_is_normalized(client):
     register(client,"schedule@example.com")
     a=client.post("/api/v1/audiences",json={"name":"Schedule"}).json()

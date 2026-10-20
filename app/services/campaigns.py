@@ -25,7 +25,7 @@ def queue_campaign(db: Session, campaign: Campaign) -> CampaignRun:
         update(Campaign)
         .where(
             Campaign.id == campaign.id,
-            Campaign.status.in_(("draft", "scheduled", "failed", "partial")),
+            Campaign.status.in_(("draft", "scheduled", "failed", "partial", "completed")),
         )
         .values(status="queued")
     ).rowcount
