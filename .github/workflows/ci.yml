@@ -26,6 +26,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,6 +61,7 @@ jobs:
       - name: Run API tests against PostgreSQL
         env:
           TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/campaigns
+          REDIS_TEST_URL: redis://localhost:6379/15
           ENVIRONMENT: test
           JWT_SECRET_KEY: ci-test-secret-with-at-least-32-bytes
           COOKIE_SECURE: "false"

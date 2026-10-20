@@ -160,6 +160,49 @@ def test_production_security_rejects_default_database_password():
 
 
 
+def test_redis_rate_limit_script_is_shared_and_expires_between_windows(monkeypatch):
+    import os
+    from time import time
+    from uuid import uuid4
+
+    import pytest
+    from redis import Redis
+    from app.core.rate_limit import _WINDOW_SCRIPT
+
+    redis_url = os.getenv("REDIS_TEST_URL")
+    if not redis_url:
+        pytest.skip("REDIS_TEST_URL is set by the CI Redis service")
+
+    first_client = Redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+    second_client = Redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+    key = "test:campaign-rate-limit:" + uuid4().hex
+    now_ms = int(time() * 1000)
+    try:
+        for index in range(10):
+            allowed, retry_after = first_client.eval(
+                _WINDOW_SCRIPT, 1, key, now_ms, 60_000, 10, "attempt-" + str(index)
+            )
+            assert int(allowed) == 1
+            assert int(retry_after) == 0
+
+        allowed, retry_after = second_client.eval(
+            _WINDOW_SCRIPT, 1, key, now_ms + 1, 60_000, 10, "attempt-from-another-client"
+        )
+        assert int(allowed) == 0
+        assert int(retry_after) >= 1
+
+        # Simulate a time after the rolling window without sleeping in the test.
+        allowed, retry_after = second_client.eval(
+            _WINDOW_SCRIPT, 1, key, now_ms + 60_001, 60_000, 10, "next-window"
+        )
+        assert int(allowed) == 1
+        assert int(retry_after) == 0
+    finally:
+        first_client.delete(key)
+        first_client.close()
+        second_client.close()
+
+
 def test_production_requires_shared_rate_limits_and_working_mail_configuration():
     import pytest
     from app.core.config import Settings
