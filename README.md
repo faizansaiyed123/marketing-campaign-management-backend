@@ -6,6 +6,7 @@ Core workflows:
 - Secure account registration/login/logout using Argon2id passwords and an HttpOnly, SameSite=Strict JWT cookie.
 - Owner-scoped audience and contact management, including subscription preferences.
 - Campaign creation, editing, scheduling and execution.
+- Editing a failed/partial campaign preserves its retry state, so the next execution retries failed deliveries without resending recipients already sent successfully.
 - Reusable, owner-scoped campaign templates with create/edit/delete workflows.
 - Durable delivery records; actual SMTP sending runs in the background worker. The worker atomically claims only campaigns that remain scheduled and due, rechecks subscription status immediately before sending, and reports skipped recipients separately from sent/failed deliveries.
 - Campaign reports aggregate delivery attempts in PostgreSQL rather than loading every delivery into the API process. The total is cumulative across retries; latest_run_status identifies the latest run separately.
