@@ -59,6 +59,8 @@ The API container waits for PostgreSQL health before starting and applies Alembi
 
 For local development, Compose binds the database and API host ports to loopback only; Redis has no published host port. Do not expose the raw HTTP API port or PostgreSQL directly to the public internet. Production login and registration limits use atomic Redis-backed rolling windows shared across API workers/replicas: 10 login attempts per source IP per minute and 5 registrations per source IP per hour. If Redis is unavailable or its URL is missing, authentication fails closed with HTTP 503 rather than bypassing the protection. Caddy overwrites X-Forwarded-For with the client address it sees; Uvicorn trusts only Caddy's fixed address on the private proxy network, not the whole Docker bridge range. The included Caddyfile terminates TLS and routes traffic, while application rate limiting is handled by Redis.
 
+The API readiness endpoint verifies PostgreSQL and, in production, the shared Redis authentication-rate-limit store. It returns HTTP 503 when either required service is unavailable, so a healthy status doesn't hide an authentication-protection outage.
+
 The API health endpoint is:
 
 ```

@@ -44,6 +44,20 @@ def _get_redis_client(redis_url: str) -> Redis:
     )
 
 
+def check_rate_limit_store() -> None:
+    """Raise RuntimeError if the shared production rate-limit store is unavailable."""
+    settings = get_settings()
+    if settings.environment.lower() in {"development", "test"}:
+        return
+    if not settings.redis_url:
+        raise RuntimeError("Shared authentication rate-limit store is not configured")
+    try:
+        _get_redis_client(settings.redis_url).ping()
+    except RedisError as exc:
+        logger.error("Shared authentication rate-limit store health check failed: %s", exc)
+        raise RuntimeError("Shared authentication rate-limit store is unavailable") from exc
+
+
 def rate_limit(max_requests: int, window_seconds: int):
     """Build a shared per-source-IP rolling-window dependency."""
     if max_requests < 1 or window_seconds < 1:

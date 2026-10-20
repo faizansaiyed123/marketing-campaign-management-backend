@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .core.config import get_settings
+from .core.rate_limit import check_rate_limit_store
 from .db import get_db
 from .routers import analytics, auth, audiences, campaigns, dashboard, templates, tracking
 
@@ -66,4 +67,8 @@ def health(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
     except SQLAlchemyError:
         raise HTTPException(503, "Database unavailable")
+    try:
+        check_rate_limit_store()
+    except RuntimeError:
+        raise HTTPException(503, "Authentication protection service unavailable")
     return {"status": "ok"}

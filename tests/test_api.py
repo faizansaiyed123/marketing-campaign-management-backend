@@ -119,6 +119,48 @@ def test_postgres_restore_creates_and_populates_a_separate_database(tmp_path):
     assert "live application still uses campaigns" in result.stdout
 
 
+
+
+def test_production_health_fails_when_shared_rate_limit_store_is_unavailable(monkeypatch, client):
+    from types import SimpleNamespace
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from app.core import rate_limit
+
+    class UnavailableRedis:
+        def ping(self):
+            raise RedisConnectionError("simulated Redis outage")
+
+    monkeypatch.setattr(
+        rate_limit,
+        "get_settings",
+        lambda: SimpleNamespace(environment="production", redis_url="redis://:test-secret-password-that-is-long-enough@redis:6379/0"),
+    )
+    monkeypatch.setattr(rate_limit, "_get_redis_client", lambda url: UnavailableRedis())
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Authentication protection service unavailable"
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_production_health_checks_shared_rate_limit_store(monkeypatch, client):
+    from types import SimpleNamespace
+    from app.core import rate_limit
+
+    class HealthyRedis:
+        def ping(self):
+            return True
+
+    monkeypatch.setattr(
+        rate_limit,
+        "get_settings",
+        lambda: SimpleNamespace(environment="production", redis_url="redis://:test-secret-password-that-is-long-enough@redis:6379/0"),
+    )
+    monkeypatch.setattr(rate_limit, "_get_redis_client", lambda url: HealthyRedis())
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_health(client):
     response = client.get("/health")
     assert response.json() == {"status": "ok"}
