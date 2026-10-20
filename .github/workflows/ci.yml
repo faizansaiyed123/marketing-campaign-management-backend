@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m pip install -e ".[dev]"
-      - run: python -m compileall -q app tests
+      - run: python -m compileall -q app tests run.py
       - name: Validate operational scripts
         run: bash -n scripts/backup_postgres.sh scripts/restore_postgres.sh
       - name: Verify PostgreSQL migrations

@@ -116,13 +116,13 @@ def main() -> int:
     validate_compose()
 
     print(
-        "[backend] Starting the existing backend Compose stack: "
-        "PostgreSQL + FastAPI API + scheduler worker.",
+        "[backend] Starting the backend Compose stack: "
+        "PostgreSQL + Redis (shared authentication rate limits) + FastAPI API + worker.",
         flush=True,
     )
     print(
-        "[backend] No Redis/Celery service is started because the repository "
-        "does not use them.",
+        "[backend] SMTP is optional for local development. Without SMTP, "
+        "campaign deliveries remain queued and are never reported as sent.",
         flush=True,
     )
 
@@ -140,8 +140,8 @@ def main() -> int:
         )
 
         print(
-            "[backend] All backend services are running. "
-            "Press Ctrl+C to stop them.",
+            "[backend] API health is passing. Confirm PostgreSQL, Redis, and the worker "
+            "are running in the Compose output above. Press Ctrl+C to stop the stack.",
             flush=True,
         )
 
