@@ -18,9 +18,6 @@ def upgrade():
         "campaign_runs",
         sa.Column("body_html_snapshot", sa.Text(), nullable=True),
     )
-    # Existing runs cannot be reconstructed after edits with certainty. Backfill
-    # current campaign content as the best safe compatibility fallback; all new
-    # runs store their content at queue time.
     op.execute(
         sa.text(
             "UPDATE campaign_runs "

@@ -29,8 +29,6 @@ def queue_campaign(
     retry_failed = campaign.status in {"failed", "partial"}
     claim_conditions = [Campaign.id == campaign.id]
     if require_due_schedule:
-        # The worker may have loaded this row before a user edited its
-        # schedule. Claim only if the database row is still scheduled and due.
         claim_conditions.extend(
             [
                 Campaign.status == "scheduled",
@@ -189,7 +187,6 @@ def render_personalized_content(subject: str, body_html: str, contact: Contact) 
         key = match.group(1).lower()
         if key not in raw_values:
             return match.group(0)
-        # RFC message headers must not contain caller-controlled newline bytes.
         return re.sub(r"[\r\n\x00-\x1f\x7f]+", " ", raw_values[key]).strip()
 
     def replace_html(match: re.Match) -> str:
@@ -304,8 +301,6 @@ def deliver_queued_run(db: Session, run: CampaignRun) -> CampaignRun:
                 if delivery is None:
                     break
 
-                # Check the subscription status immediately before sending. The
-                # contact row lock serializes this check with a concurrent unsubscribe.
                 contact = db.scalar(
                     select(Contact)
                     .where(Contact.id == delivery.contact_id)

@@ -23,9 +23,6 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    # Cookie-authenticated mutation endpoints must not accept browser requests
-    # initiated by another origin (including sibling subdomains that are
-    # "same-site" for SameSite=Strict cookies).
     unsafe_methods = {"POST", "PUT", "PATCH", "DELETE"}
     origin = request.headers.get("origin")
     fetch_site = request.headers.get("sec-fetch-site", "").lower()

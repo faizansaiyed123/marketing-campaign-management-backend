@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -11,7 +10,6 @@ export FAKE_DOCKER_CALLS="$TMP/docker-calls.log"
 : > "$FAKE_DOCKER_CALLS"
 
 cat > "$FAKE_BIN/docker" <<'FAKE_DOCKER'
-#!/usr/bin/env bash
 set -eo pipefail
 
 while [[ "$#" -gt 0 && "$1" != "exec" ]]; do shift; done
@@ -57,7 +55,6 @@ fail() {
 }
 pass() { echo "PASS: $*"; }
 
-# Valid archive is created, validated, and stored with restrictive permissions.
 BACKUP_DIR="$TMP/backups" bash "$ROOT_DIR/scripts/backup_postgres.sh" >"$TMP/backup.log" 2>&1 \
   || { cat "$TMP/backup.log" >&2; fail "valid backup workflow"; }
 backup_file="$(find "$TMP/backups" -maxdepth 1 -type f -name 'campaigns-*.dump' -print -quit)"
@@ -66,7 +63,6 @@ backup_file="$(find "$TMP/backups" -maxdepth 1 -type f -name 'campaigns-*.dump' 
 [[ "$(stat -c '%a' "$TMP/backups")" == "700" ]] || fail "backup directory permissions are not 700"
 pass "backup creates and validates a restricted custom-format archive"
 
-# An empty pg_dump output must not be installed as a completed backup.
 if FAKE_EMPTY_DUMP=1 BACKUP_DIR="$TMP/empty-backups" \
   bash "$ROOT_DIR/scripts/backup_postgres.sh" >"$TMP/empty-backup.log" 2>&1; then
   fail "empty backup unexpectedly succeeded"
@@ -76,7 +72,6 @@ if find "$TMP/empty-backups" -maxdepth 1 -type f -name 'campaigns-*.dump' | grep
 fi
 pass "empty backup is rejected"
 
-# Restore must refuse the configured live database before issuing createdb.
 : > "$FAKE_DOCKER_CALLS"
 if RESTORE_DATABASE=campaigns bash "$ROOT_DIR/scripts/restore_postgres.sh" "$backup_file" \
   >"$TMP/live-restore.log" 2>&1; then
@@ -89,7 +84,6 @@ if grep -q "createdb" "$FAKE_DOCKER_CALLS"; then
 fi
 pass "restore refuses the live database without creating it"
 
-# A separate restore target should be created and restored to.
 : > "$FAKE_DOCKER_CALLS"
 RESTORE_DATABASE=campaigns_restore_test bash "$ROOT_DIR/scripts/restore_postgres.sh" "$backup_file" \
   >"$TMP/restore.log" 2>&1 \
@@ -98,7 +92,6 @@ grep -q "createdb" "$FAKE_DOCKER_CALLS" || fail "restore did not create the sepa
 grep -q "pg_restore" "$FAKE_DOCKER_CALLS" || fail "restore did not run pg_restore"
 pass "restore targets a separate database"
 
-# A failed restore must be surfaced, not reported as successful.
 if FAKE_RESTORE_FAIL=1 RESTORE_DATABASE=campaigns_restore_failure \
   bash "$ROOT_DIR/scripts/restore_postgres.sh" "$backup_file" >"$TMP/restore-failure.log" 2>&1; then
   fail "failed restore unexpectedly returned success"

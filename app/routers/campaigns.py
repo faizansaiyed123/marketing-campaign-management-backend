@@ -29,8 +29,6 @@ def build_report(db,c,run=None):
         .order_by(CampaignRun.started_at.desc())
     )
 
-    # Aggregate in PostgreSQL instead of loading every delivery into Python.
-    # This keeps campaign-wide reporting efficient for large audiences.
     state_rows=db.execute(
         select(Delivery.status,func.count(Delivery.id))
         .join(CampaignRun,Delivery.run_id==CampaignRun.id)
@@ -93,7 +91,6 @@ def create_campaign(payload:CampaignCreate,db:Session=Depends(get_db),user=Depen
 
 @router.patch("/{campaign_id}",response_model=CampaignResponse)
 def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    # Serialize edits against execute/worker state transitions in PostgreSQL.
     campaign=get_campaign(db,campaign_id,user,for_update=True)
     if campaign.status in {"queued","sent"}:
         raise HTTPException(409,"Queued or sent campaigns cannot be edited")
@@ -108,8 +105,6 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
     if campaign.scheduled_at and campaign.scheduled_at>datetime.now(timezone.utc):
         campaign.status="scheduled"
     elif previous_status in {"failed", "partial"} and campaign.audience_id == previous_audience_id:
-        # Preserve retry semantics only while the audience remains the same.
-        # Changing the audience starts a new draft instead of retrying old contacts.
         campaign.status=previous_status
     else:
         campaign.status="draft"
@@ -119,8 +114,6 @@ def update_campaign(campaign_id:str,payload:CampaignUpdate,db:Session=Depends(ge
 
 @router.post("/{campaign_id}/execute",response_model=CampaignReport,status_code=202)
 def execute(campaign_id:str,db:Session=Depends(get_db),user=Depends(get_current_user)):
-    # Serialize execute against edits so a single committed campaign version
-    # determines both its recipient audience and the content sent by the worker.
     campaign=get_campaign(db,campaign_id,user,for_update=True)
     if campaign.status in {"sent","queued"}:
         raise HTTPException(409,"Campaign is already queued or sent")
@@ -128,7 +121,6 @@ def execute(campaign_id:str,db:Session=Depends(get_db),user=Depends(get_current_
         run=queue_campaign(db,campaign)
     except ValueError:
         raise HTTPException(409,"Campaign is already queued or sent")
-    # The API persists durable work; the worker owns SMTP delivery.
     return build_report(db,campaign,run)
 
 @router.get("/{campaign_id}/report",response_model=CampaignReport)

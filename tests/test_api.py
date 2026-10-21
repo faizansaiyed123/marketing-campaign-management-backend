@@ -408,7 +408,6 @@ def test_redis_rate_limit_script_is_shared_and_expires_between_windows(monkeypat
         assert int(allowed) == 0
         assert int(retry_after) >= 1
 
-        # Simulate a time after the rolling window without sleeping in the test.
         allowed, retry_after = second_client.eval(
             _WINDOW_SCRIPT, 1, key, now_ms + 60_001, 60_000, 10, "next-window"
         )
@@ -1293,8 +1292,6 @@ def test_scheduler_will_not_claim_a_campaign_changed_back_to_draft(client):
 
     with Session(engine) as db:
         campaign = db.get(Campaign, campaign_data["id"])
-        # Simulate the scheduler having selected a due row, after which a user
-        # changes its state before the worker performs the atomic claim.
         campaign.status = "draft"
         campaign.scheduled_at = None
         db.commit()

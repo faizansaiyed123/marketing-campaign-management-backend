@@ -47,8 +47,6 @@ def process_due_campaigns() -> int:
                     db.rollback()
                     logger.exception("Failed to deliver scheduled campaign run %s", run.id)
 
-        # Without SMTP, preserve durable queued work without repeatedly entering
-        # the mail-delivery path every polling interval.
         if mail_enabled:
             queued_runs = db.scalars(
                 select(CampaignRun)
