@@ -4,3 +4,14 @@ __pycache__/
 .pytest_cache/
 .coverage
 ci.db
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+logs/
+*.log
+storage/
+uploads/
+.DS_Store
