@@ -6,6 +6,8 @@ This repository provides the FastAPI backend for a marketing campaign management
 
 **Companion frontend:** [marketing-campaign-management-frontend](https://github.com/faizansaiyed123/marketing-campaign-management-frontend)
 
+**Visual walkthrough:** [View the application screenshots](https://github.com/faizansaiyed123/marketing-campaign-management-frontend/blob/main/docs/testing/VISUAL-TEST-WALKTHROUGH.md)
+
 Core workflows:
 - Secure account registration/login/logout using Argon2id passwords and an HttpOnly, SameSite=Strict JWT cookie.
 - Owner-scoped audience and contact management, including subscription preferences.
