@@ -2,6 +2,10 @@
 
 FastAPI + SQLAlchemy 2 + PostgreSQL + Alembic.
 
+This repository provides the FastAPI backend for a marketing campaign management platform. It manages account sessions, audiences and contacts, campaign authoring and reporting, reusable templates, tracking, and scheduled or queued email delivery through a background worker.
+
+**Companion frontend:** [marketing-campaign-management-frontend](https://github.com/faizansaiyed123/marketing-campaign-management-frontend)
+
 Core workflows:
 - Secure account registration/login/logout using Argon2id passwords and an HttpOnly, SameSite=Strict JWT cookie.
 - Owner-scoped audience and contact management, including subscription preferences.
@@ -80,6 +84,7 @@ cp .env.example .env
 ```
 
 Important variables include:
+- `ENVIRONMENT`
 - `DATABASE_URL`
 - `POSTGRES_PASSWORD` (Docker Compose database credential)
 - `JWT_SECRET_KEY`
@@ -269,6 +274,32 @@ uvicorn app.main:app --reload
 ```
 
 The existing frontend Playwright integration tests start the backend with Uvicorn and expect the backend health endpoint on port 8000. The test configuration can use an existing backend directory through `BACKEND_DIR`.
+
+## Tests
+
+Install the development dependencies and run the API test suite:
+
+```bash
+python -m pip install -e ".[dev]"
+pytest -q
+```
+
+The CI workflow also checks database migrations and model parity, tests the backup and restore scripts, validates Docker Compose and Caddy configuration, and builds the API container image.
+
+## Project structure
+
+```text
+app/
+  core/       Runtime settings, security, and rate limiting
+  routers/    Authentication, audiences, campaigns, templates,
+              dashboard, analytics, and tracking
+  services/   Campaign queueing, personalization, and email delivery
+  worker.py   Scheduled campaign processing and queued delivery
+alembic/      Database schema migrations
+scripts/      PostgreSQL backup and restore scripts
+tests/        API and operational-script tests
+run.py        Docker Compose startup and API health check
+```
 
 ## API
 
